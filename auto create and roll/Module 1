@@ -1,9 +1,7 @@
 Option Explicit
 
 '=================================================
-' Vanir File Manager
-' Copies latest base and new format Excel files
-' to today's date, creating year/archive folders if needed
+' Vanir File Manager - Supports multiple base paths
 '=================================================
 Public Sub Vanir_File_Manager()
 
@@ -11,14 +9,17 @@ Public Sub Vanir_File_Manager()
     Dim fso As Object
     
     Dim userName As String
-    Dim basePath As String
+    Dim fizzPath As String, futurePath As String
     Dim yearFolder As String
     Dim todayDate As String
     Dim dateFormat As String
-    
-    Dim baseName As String
-    Dim suffix As String
     Dim createdCount As Long
+    
+    ' File prefixes for first path
+    Dim fizzOldCurve As String, fizzNewCurve As String
+    
+    ' File prefixes for second path
+    Dim futureTradeList As String, futureOldCurve As String, futureNewCurve As String
     
     On Error GoTo ErrHandler
     
@@ -29,48 +30,70 @@ Public Sub Vanir_File_Manager()
     ' Read config from sheet
     '--------------------------------------
     userName = Trim(ws.Range("D4").Value)
-    basePath = Trim(ws.Range("A15").Value)
     dateFormat = ws.Range("A4").Value
     
-    baseName = Trim(ws.Range("B29").Value)
-    suffix = Trim(ws.Range("C29").Value)
+    ' --- Fizz ---
+    fizzPath = Trim(ws.Range("A15").Value)
+    fizzOldCurve = Trim(ws.Range("B29").Value)  ' Base file
+    fizzNewCurve = Trim(ws.Range("C29").Value)    ' New format
     
-    If userName = "" Or basePath = "" Then
-        MsgBox "Missing username or path.", vbCritical
+    ' --- Future ---
+    futurePath = Trim(ws.Range("A15").Value)
+    futureTradeList = Trim(ws.Range("B25").Value)  ' Base file
+    futureOldCurve = Trim(ws.Range("C25").Value)   ' Second file
+    futureNewCurve = Trim(ws.Range("D25").Value)    ' NEW FORMAT
+    
+    If userName = "" Or (fizzPath = "" And futurePath = "") Then
+        MsgBox "Missing username or paths.", vbCritical
         Exit Sub
     End If
     
     '--------------------------------------
-    ' Build paths
+    ' Today's date
     '--------------------------------------
-    If Right(basePath, 1) <> "\" Then basePath = basePath & "\"
-    basePath = "C:\Users\" & userName & "\" & basePath
-    
-    yearFolder = basePath & "Vanir JPN Fizz Curve Archive  " & Year(Date) & "\"
     todayDate = Format(Date, dateFormat)
     
-    '--------------------------------------
-    ' Ensure current year folder exists
-    '--------------------------------------
-    If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
+    '======================================
+    ' Process first base path
+    '======================================
+    If fizzPath <> "" Then
+        If Right(fizzPath, 1) <> "\" Then fizzPath = fizzPath & "\"
+        fizzPath = "C:\Users\" & userName & "\" & fizzPath
+        yearFolder = fizzPath & "Vanir JPN Fizz Curve Archive " & Year(Date) & "\"
+        
+        If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
+        
+        ' Base file
+        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate) Then createdCount = createdCount + 1
+        ' New format file
+        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate) Then createdCount = createdCount + 1
+    End If
     
-    '--------------------------------------
-    ' Process base file
-    '--------------------------------------
-    If ProcessFileWithFallback(fso, yearFolder, baseName, "", todayDate) Then createdCount = createdCount + 1
-    
-    '--------------------------------------
-    ' Process new format file
-    '--------------------------------------
-    If ProcessFileWithFallback(fso, yearFolder, baseName, suffix, todayDate) Then createdCount = createdCount + 1
+    '======================================
+    ' Process second base path
+    '======================================
+    If futurePath <> "" Then
+        If Right(futurePath, 1) <> "\" Then futurePath = futurePath & "\"
+        futurePath = "C:\Users\" & userName & "\" & futurePath
+        yearFolder = futurePath & "Vanir JPN Curve Archive " & Year(Date) & "\"
+        
+        If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
+        
+        ' Base file
+        If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate) Then createdCount = createdCount + 1
+        ' Mid file (like c25)
+        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate) Then createdCount = createdCount + 1
+        ' Mid file + NEW FORMAT
+        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate) Then createdCount = createdCount + 1
+    End If
     
     '--------------------------------------
     ' Result message
     '--------------------------------------
     If createdCount = 0 Then
-        MsgBox "Today's files already exist in: " & yearFolder, vbInformation
+        MsgBox "Today's files already exist in all folders.", vbInformation
     Else
-        MsgBox createdCount & " file(s) created in: " & yearFolder, vbInformation
+        MsgBox createdCount & " file(s) created.", vbInformation
     End If
 
 ExitProc:
@@ -103,16 +126,13 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
         todayFile = folderPath & baseName & "_" & todayDate & " " & suffix & ".xlsx"
     End If
     
-    ' --- NEW: Check if today's file exists ---
-    If fso.FileExists(todayFile) Then
-        ' File already exists, do not copy anything
-        Exit Function
-    End If
+    ' Check if today's file exists
+    If fso.FileExists(todayFile) Then Exit Function
     
     ' Step 1: Look for latest file in current year folder
     latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
     
-    ' Step 2: If current year folder exists but empty, look in latest month folder inside it
+    ' Step 2: If empty, look in latest month folder
     If latestFile = "" Then
         latestMonthFolder = GetLatestMonthFolder(fso, folderPath)
         If latestMonthFolder <> "" Then
@@ -137,7 +157,6 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     ' Copy latest to today's file
     fso.CopyFile latestFile, todayFile
     ProcessFileWithFallback = True
-
 End Function
 
 '=================================================
@@ -180,9 +199,7 @@ Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As S
     latestDate = #1/1/1900#
     
     For Each subFolder In folder.SubFolders
-        ' Expect folder name in mmyyyy
         If Len(subFolder.Name) = 6 And IsNumeric(subFolder.Name) Then
-            ' Convert to date using last day of month
             Dim folderDate As Date
             folderDate = DateSerial(CInt(Right(subFolder.Name, 4)), CInt(Left(subFolder.Name, 2)) + 1, 0)
             If folderDate > latestDate Then

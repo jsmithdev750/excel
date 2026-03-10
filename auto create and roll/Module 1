@@ -46,7 +46,7 @@ Public Sub Vanir_File_Manager()
     If Right(basePath, 1) <> "\" Then basePath = basePath & "\"
     basePath = "C:\Users\" & userName & "\" & basePath
     
-    yearFolder = basePath & "Vanir Jpn Curve Archive " & Year(Date) & "\"
+    yearFolder = basePath & "Vanir JPN Fizz Curve Archive  " & Year(Date) & "\"
     todayDate = Format(Date, dateFormat)
     
     '--------------------------------------
@@ -68,7 +68,7 @@ Public Sub Vanir_File_Manager()
     ' Result message
     '--------------------------------------
     If createdCount = 0 Then
-        MsgBox "No new files created. Check previous year/month folders.", vbInformation
+        MsgBox "Today's files already exist in: " & yearFolder, vbInformation
     Else
         MsgBox createdCount & " file(s) created in: " & yearFolder, vbInformation
     End If
@@ -103,8 +103,11 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
         todayFile = folderPath & baseName & "_" & todayDate & " " & suffix & ".xlsx"
     End If
     
-    ' Exit if today's file exists
-    If fso.FileExists(todayFile) Then Exit Function
+    ' --- NEW: Check if today's file exists ---
+    If fso.FileExists(todayFile) Then
+        ' File already exists, do not copy anything
+        Exit Function
+    End If
     
     ' Step 1: Look for latest file in current year folder
     latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
@@ -128,15 +131,13 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
         End If
     End If
     
-    ' No file found
-    If latestFile = "" Then
-        MsgBox "No existing file found for: " & baseName & " " & suffix, vbExclamation
-        Exit Function
-    End If
+    ' No source file found
+    If latestFile = "" Then Exit Function
     
     ' Copy latest to today's file
     fso.CopyFile latestFile, todayFile
     ProcessFileWithFallback = True
+
 End Function
 
 '=================================================
@@ -193,3 +194,4 @@ Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As S
     
     GetLatestMonthFolder = latestFolder
 End Function
+

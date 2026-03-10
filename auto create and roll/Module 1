@@ -1,0 +1,193 @@
+Option Explicit
+
+'=================================================
+' Vanir File Manager
+' Copies latest base and new format Excel files
+' to today's date, creating year/archive folders if needed
+'=================================================
+Public Sub Vanir_File_Manager()
+
+    Dim ws As Worksheet
+    Dim fso As Object
+    
+    Dim userName As String
+    Dim basePath As String
+    Dim archivePath As String
+    Dim yearFolder As String
+    Dim prevYearFolder As String
+    Dim todayDate As String
+    Dim dateFormat As String
+    
+    Dim baseName As String
+    Dim suffix As String
+    Dim createdCount As Long
+    
+    On Error GoTo ErrHandler
+    
+    Set ws = ThisWorkbook.Worksheets("Sheet1")
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    
+    '--------------------------------------
+    ' Read config from sheet
+    '--------------------------------------
+    userName = Trim(ws.Range("D4").Value)
+    basePath = Trim(ws.Range("A15").Value)
+    dateFormat = ws.Range("A4").Value
+    
+    baseName = Trim(ws.Range("B29").Value)
+    suffix = Trim(ws.Range("C29").Value)
+    
+    If userName = "" Or basePath = "" Then
+        MsgBox "Missing username or path.", vbCritical
+        Exit Sub
+    End If
+    
+    '--------------------------------------
+    ' Build paths
+    '--------------------------------------
+    If Right(basePath, 1) <> "\" Then basePath = basePath & "\"
+    basePath = "C:\Users\" & userName & "\" & basePath
+    
+    yearFolder = basePath & "Vanir Jpn Curve Archive " & Year(Date) & "\"
+    todayDate = Format(Date, dateFormat)
+    
+    '--------------------------------------
+    ' Ensure current year folder exists
+    '--------------------------------------
+    If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
+    
+    '--------------------------------------
+    ' Process base file
+    '--------------------------------------
+    If ProcessFileWithFallback(fso, yearFolder, baseName, "", todayDate) Then createdCount = createdCount + 1
+    
+    '--------------------------------------
+    ' Process new format file
+    '--------------------------------------
+    If ProcessFileWithFallback(fso, yearFolder, baseName, suffix, todayDate) Then createdCount = createdCount + 1
+    
+    '--------------------------------------
+    ' Result message
+    '--------------------------------------
+    If createdCount = 0 Then
+        MsgBox "No new files created. Check previous year/month folders.", vbInformation
+    Else
+        MsgBox createdCount & " file(s) created in: " & yearFolder, vbInformation
+    End If
+
+ExitProc:
+    Set fso = Nothing
+    Exit Sub
+
+ErrHandler:
+    MsgBox "Error: " & Err.Description, vbCritical
+    Resume ExitProc
+
+End Sub
+
+'=================================================
+' Process file with fallback to previous year/month
+'=================================================
+Private Function ProcessFileWithFallback(ByVal fso As Object, _
+                                         ByVal folderPath As String, _
+                                         ByVal baseName As String, _
+                                         ByVal suffix As String, _
+                                         ByVal todayDate As String) As Boolean
+    Dim todayFile As String
+    Dim latestFile As String
+    Dim prevYearFolder As String
+    Dim latestMonthFolder As String
+    
+    ' Build file name (suffix optional)
+    If suffix = "" Then
+        todayFile = folderPath & baseName & "_" & todayDate & ".xlsx"
+    Else
+        todayFile = folderPath & baseName & "_" & todayDate & " " & suffix & ".xlsx"
+    End If
+    
+    ' Exit if today's file exists
+    If fso.FileExists(todayFile) Then Exit Function
+    
+    ' Get latest file in current folder
+    latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
+    
+    ' If no file in current year folder, fallback to previous year
+    If latestFile = "" Then
+        prevYearFolder = Left(folderPath, InStrRev(folderPath, " ") - 1) & " " & (Year(Date) - 1) & "\"
+        If fso.FolderExists(prevYearFolder) Then
+            ' Look for latest month folder inside previous year folder
+            latestMonthFolder = GetLatestMonthFolder(fso, prevYearFolder)
+            If latestMonthFolder <> "" Then
+                latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
+            End If
+        End If
+    End If
+    
+    ' No file found
+    If latestFile = "" Then
+        MsgBox "No existing file found for: " & baseName & " " & suffix, vbExclamation
+        Exit Function
+    End If
+    
+    ' Copy latest to today's file
+    fso.CopyFile latestFile, todayFile
+    ProcessFileWithFallback = True
+
+End Function
+
+'=================================================
+' Find latest file matching base name and optional suffix
+'=================================================
+Private Function GetLatestFile(ByVal fso As Object, _
+                               ByVal folderPath As String, _
+                               ByVal baseName As String, _
+                               ByVal suffix As String) As String
+    Dim folder As Object, file As Object
+    Dim newestDate As Date, newestFile As String
+    
+    If Not fso.FolderExists(folderPath) Then Exit Function
+    Set folder = fso.GetFolder(folderPath)
+    newestDate = #1/1/1900#
+    
+    For Each file In folder.Files
+        ' Match base name
+        If InStr(1, file.Name, baseName, vbTextCompare) > 0 Then
+            If suffix = "" Or InStr(1, file.Name, suffix, vbTextCompare) > 0 Then
+                If file.DateLastModified > newestDate Then
+                    newestDate = file.DateLastModified
+                    newestFile = file.Path
+                End If
+            End If
+        End If
+    Next file
+    
+    GetLatestFile = newestFile
+End Function
+
+'=================================================
+' Get latest month folder in mmyyyy format inside a year folder
+'=================================================
+Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As String) As String
+    Dim folder As Object, subFolder As Object
+    Dim latestDate As Date, latestFolder As String
+    
+    If Not fso.FolderExists(yearFolder) Then Exit Function
+    Set folder = fso.GetFolder(yearFolder)
+    latestDate = #1/1/1900#
+    
+    For Each subFolder In folder.SubFolders
+        ' Expect folder name in mmyyyy
+        If Len(subFolder.Name) = 6 And IsNumeric(subFolder.Name) Then
+            ' Convert to date using last day of month
+            Dim folderDate As Date
+            folderDate = DateSerial(CInt(Right(subFolder.Name, 4)), CInt(Left(subFolder.Name, 2)) + 1, 0)
+            If folderDate > latestDate Then
+                latestDate = folderDate
+                latestFolder = subFolder.Path & "\"
+            End If
+        End If
+    Next subFolder
+    
+    GetLatestMonthFolder = latestFolder
+End Function
+

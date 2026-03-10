@@ -69,6 +69,8 @@ Public Sub Vanir_File_Manager()
         sourceFile = ""
         If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
         If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
+        
+        
     End If
     
     '======================================
@@ -194,17 +196,37 @@ Private Function GetLatestFile(ByVal fso As Object, _
     newestDate = #1/1/1900#
     
     For Each file In folder.Files
+    
         If InStr(1, file.Name, baseName, vbTextCompare) > 0 Then
-            If suffix = "" Or InStr(1, file.Name, suffix, vbTextCompare) > 0 Then
-                If file.DateLastModified > newestDate Then
-                    newestDate = file.DateLastModified
-                    newestFile = file.Path
-                End If
+            
+            '---------------------------------
+            ' FIX: prevent old/new mix up
+            '---------------------------------
+            
+            ' Old curve: ignore NEW FORMAT files
+            If suffix = "" Then
+                If InStr(1, file.Name, "NEW FORMAT", vbTextCompare) > 0 Then GoTo SkipFile
             End If
+            
+            ' New format: only accept NEW FORMAT files
+            If suffix <> "" Then
+                If InStr(1, file.Name, suffix, vbTextCompare) = 0 Then GoTo SkipFile
+            End If
+            
+            '---------------------------------
+            
+            If file.DateLastModified > newestDate Then
+                newestDate = file.DateLastModified
+                newestFile = file.Path
+            End If
+            
         End If
+        
+SkipFile:
     Next file
     
     GetLatestFile = newestFile
+
 End Function
 
 '=================================================

@@ -12,9 +12,7 @@ Public Sub Vanir_File_Manager()
     
     Dim userName As String
     Dim basePath As String
-    Dim archivePath As String
     Dim yearFolder As String
-    Dim prevYearFolder As String
     Dim todayDate As String
     Dim dateFormat As String
     
@@ -86,7 +84,7 @@ ErrHandler:
 End Sub
 
 '=================================================
-' Process file with fallback to previous year/month
+' Process file with fallback to latest month / previous year
 '=================================================
 Private Function ProcessFileWithFallback(ByVal fso As Object, _
                                          ByVal folderPath As String, _
@@ -95,8 +93,8 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
                                          ByVal todayDate As String) As Boolean
     Dim todayFile As String
     Dim latestFile As String
-    Dim prevYearFolder As String
     Dim latestMonthFolder As String
+    Dim prevYearFolder As String
     
     ' Build file name (suffix optional)
     If suffix = "" Then
@@ -108,14 +106,21 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     ' Exit if today's file exists
     If fso.FileExists(todayFile) Then Exit Function
     
-    ' Get latest file in current folder
+    ' Step 1: Look for latest file in current year folder
     latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
     
-    ' If no file in current year folder, fallback to previous year
+    ' Step 2: If current year folder exists but empty, look in latest month folder inside it
+    If latestFile = "" Then
+        latestMonthFolder = GetLatestMonthFolder(fso, folderPath)
+        If latestMonthFolder <> "" Then
+            latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
+        End If
+    End If
+    
+    ' Step 3: If still nothing, fallback to previous year
     If latestFile = "" Then
         prevYearFolder = Left(folderPath, InStrRev(folderPath, " ") - 1) & " " & (Year(Date) - 1) & "\"
         If fso.FolderExists(prevYearFolder) Then
-            ' Look for latest month folder inside previous year folder
             latestMonthFolder = GetLatestMonthFolder(fso, prevYearFolder)
             If latestMonthFolder <> "" Then
                 latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
@@ -132,7 +137,6 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     ' Copy latest to today's file
     fso.CopyFile latestFile, todayFile
     ProcessFileWithFallback = True
-
 End Function
 
 '=================================================
@@ -150,7 +154,6 @@ Private Function GetLatestFile(ByVal fso As Object, _
     newestDate = #1/1/1900#
     
     For Each file In folder.Files
-        ' Match base name
         If InStr(1, file.Name, baseName, vbTextCompare) > 0 Then
             If suffix = "" Or InStr(1, file.Name, suffix, vbTextCompare) > 0 Then
                 If file.DateLastModified > newestDate Then
@@ -190,4 +193,3 @@ Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As S
     
     GetLatestMonthFolder = latestFolder
 End Function
-

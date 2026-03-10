@@ -1,5 +1,4 @@
 Option Explicit
-
 '=================================================
 ' Vanir File Manager - Fully working with fallback
 '=================================================
@@ -54,7 +53,7 @@ Public Sub Vanir_File_Manager()
     '--------------------------------------
     ' Today's date
     '--------------------------------------
-    todayDate = Format(Date, dateFormat)
+    todayDate = Format(CDate(ws.Range("D2").Value), dateFormat)
     
     '======================================
     ' Process Fizz path
@@ -68,8 +67,8 @@ Public Sub Vanir_File_Manager()
         
         ' Process Fizz files using shared sourceFile
         sourceFile = ""
-        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
     End If
     
     '======================================
@@ -84,9 +83,9 @@ Public Sub Vanir_File_Manager()
         
         ' Process Future files using same shared sourceFile
         sourceFile = ""
-        If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
     End If
     
     '--------------------------------------
@@ -115,7 +114,8 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
                                          ByVal folderPath As String, _
                                          ByVal baseName As String, _
                                          ByVal suffix As String, _
-                                         ByVal todayDate As String) As Boolean
+                                         ByVal todayDate As String, _
+                                         ByVal todayValue As Variant) As Boolean
 
     Dim todayFile As String
     Dim latestFile As String
@@ -173,13 +173,12 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     
     ' If Futures Tradelist update data
     If InStr(1, todayFile, "Tradelist", vbTextCompare) > 0 Then
-        ProcessFutureTradeList todayFile
+        ProcessFutureTradeList todayFile, todayValue
     End If
     
     ProcessFileWithFallback = True
 
 End Function
-
 '=================================================
 ' Find latest file matching base name and optional suffix
 '=================================================
@@ -262,7 +261,7 @@ End Sub
 '=================================================
 ' Update Futures Tradelist content
 '=================================================
-Private Sub ProcessFutureTradeList(ByVal filePath As String)
+Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As Variant)
 
     Dim wb As Workbook
     Dim ws As Worksheet
@@ -276,7 +275,7 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String)
     
     Application.ScreenUpdating = False
     
-    todayText = Format(Date, "d mmm yyyy")
+    todayText = Format(CDate(todayValue), "d mmm yyyy")
     
     Set wb = Workbooks.Open(filePath)
     Set ws = wb.Worksheets(1)
@@ -290,10 +289,8 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String)
         c.Offset(0, 1).Value = todayText
     End If
     
-    
     ' Sections we need
     sectionNames = Array("FUTURES", "OPTIONS", "OTC - VGM ONLY")
-    
     
     '---------------------------
     ' Process each section
@@ -307,51 +304,50 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String)
             ' move to Product row
             If Trim(ws.Cells(c.Row + 1, c.Column).Value) = "Product" Then
 
-            startRow = c.Row + 2
-            endRow = startRow
-            
-            ' find end of data
-            Do
-                If ws.Cells(endRow, c.Column).Value = "" Then Exit Do
-                If ws.Cells(endRow, c.Column).Value = "OTC" _
-                Or ws.Cells(endRow, c.Column).Value = "VGM" _
-                Or ws.Cells(endRow, c.Column).Value = "OTC - VGM ONLY" Then Exit Do
-                endRow = endRow + 1
-            Loop
-            
-            '==========================
-            ' Clear 6 columns safely
-            '==========================
-            Dim rr As Long, cc As Long
-            Dim cell As Range
-            Dim lastCol As Long
-            
-            lastCol = c.Column + 5
-            
-            rr = startRow
-            Do While rr < endRow
-                cc = c.Column
-                Do While cc <= lastCol
-                    Set cell = ws.Cells(rr, cc)
-                    If cell.MergeCells Then
-                        ' Clear the whole merged block
-                        cell.MergeArea.ClearContents
-                        ' Skip to column after merge area
-                        cc = cc + cell.MergeArea.Columns.Count
-                    Else
-                        cell.ClearContents
-                        cc = cc + 1
-                    End If
+                startRow = c.Row + 2
+                endRow = startRow
+                
+                ' find end of data
+                Do
+                    If ws.Cells(endRow, c.Column).Value = "" Then Exit Do
+                    If ws.Cells(endRow, c.Column).Value = "OTC" _
+                    Or ws.Cells(endRow, c.Column).Value = "VGM" _
+                    Or ws.Cells(endRow, c.Column).Value = "OTC - VGM ONLY" Then Exit Do
+                    endRow = endRow + 1
                 Loop
-                rr = rr + 1
-            Loop
-        
-        End If
+                
+                '==========================
+                ' Clear 6 columns safely
+                '==========================
+                Dim rr As Long, cc As Long
+                Dim cell As Range
+                Dim lastCol As Long
+                
+                lastCol = c.Column + 5
+                
+                rr = startRow
+                Do While rr < endRow
+                    cc = c.Column
+                    Do While cc <= lastCol
+                        Set cell = ws.Cells(rr, cc)
+                        If cell.MergeCells Then
+                            ' Clear the whole merged block
+                            cell.MergeArea.ClearContents
+                            ' Skip to column after merge area
+                            cc = cc + cell.MergeArea.Columns.Count
+                        Else
+                            cell.ClearContents
+                            cc = cc + 1
+                        End If
+                    Loop
+                    rr = rr + 1
+                Loop
             
+            End If
+                
         End If
         
     Next i
-    
     
     wb.Save
     wb.Close False
@@ -359,3 +355,4 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String)
     Application.ScreenUpdating = True
 
 End Sub
+

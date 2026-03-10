@@ -165,6 +165,10 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     
     ' Copy correct file
     fso.CopyFile latestFile, todayFile
+    ' If this is NEW FORMAT file, clear data
+    If InStr(1, todayFile, "NEW FORMAT", vbTextCompare) > 0 Then
+        ClearRowsFrom2 todayFile
+    End If
     
     ProcessFileWithFallback = True
 
@@ -224,4 +228,29 @@ Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As S
     
     GetLatestMonthFolder = latestFolder
 End Function
+
+'=================================================
+' Clear rows from row 2 onwards
+'=================================================
+Private Sub ClearRowsFrom2(ByVal filePath As String)
+
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    
+    Application.ScreenUpdating = False
+    Application.DisplayAlerts = False
+    
+    Set wb = Workbooks.Open(filePath)
+    
+    For Each ws In wb.Worksheets
+        ws.Rows("2:" & ws.Rows.Count).ClearContents
+    Next ws
+    
+    wb.Save
+    wb.Close False
+    
+    Application.DisplayAlerts = True
+    Application.ScreenUpdating = True
+
+End Sub
 

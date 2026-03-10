@@ -163,11 +163,17 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     ' If still nothing ? stop
     If latestFile = "" Then Exit Function
     
+    '------ Resetting the tradelist or curve --------
     ' Copy correct file
     fso.CopyFile latestFile, todayFile
     ' If this is NEW FORMAT file, clear data
     If InStr(1, todayFile, "NEW FORMAT", vbTextCompare) > 0 Then
         ClearRowsFrom2 todayFile
+    End If
+    
+    ' If Futures Tradelist update data
+    If InStr(1, todayFile, "Tradelist", vbTextCompare) > 0 Then
+        ProcessFutureTradeList todayFile
     End If
     
     ProcessFileWithFallback = True
@@ -253,4 +259,103 @@ Private Sub ClearRowsFrom2(ByVal filePath As String)
     Application.ScreenUpdating = True
 
 End Sub
+'=================================================
+' Update Futures Tradelist content
+'=================================================
+Private Sub ProcessFutureTradeList(ByVal filePath As String)
 
+    Dim wb As Workbook
+    Dim ws As Worksheet
+    Dim c As Range
+    Dim r As Long
+    Dim startRow As Long
+    Dim endRow As Long
+    Dim todayText As String
+    Dim sectionNames As Variant
+    Dim i As Long
+    
+    Application.ScreenUpdating = False
+    
+    todayText = Format(Date, "d mmm yyyy")
+    
+    Set wb = Workbooks.Open(filePath)
+    Set ws = wb.Worksheets(1)
+    
+    '---------------------------
+    ' Update Date
+    '---------------------------
+    Set c = ws.Cells.Find("Date:", LookAt:=xlPart, MatchCase:=False)
+    
+    If Not c Is Nothing Then
+        c.Offset(0, 1).Value = todayText
+    End If
+    
+    
+    ' Sections we need
+    sectionNames = Array("FUTURES", "OPTIONS", "OTC - VGM ONLY")
+    
+    
+    '---------------------------
+    ' Process each section
+    '---------------------------
+    For i = LBound(sectionNames) To UBound(sectionNames)
+        
+        Set c = ws.Cells.Find(sectionNames(i), LookAt:=xlWhole, MatchCase:=False)
+        
+        If Not c Is Nothing Then
+            
+            ' move to Product row
+            If Trim(ws.Cells(c.Row + 1, c.Column).Value) = "Product" Then
+
+            startRow = c.Row + 2
+            endRow = startRow
+            
+            ' find end of data
+            Do
+                If ws.Cells(endRow, c.Column).Value = "" Then Exit Do
+                If ws.Cells(endRow, c.Column).Value = "OTC" _
+                Or ws.Cells(endRow, c.Column).Value = "VGM" _
+                Or ws.Cells(endRow, c.Column).Value = "OTC - VGM ONLY" Then Exit Do
+                endRow = endRow + 1
+            Loop
+            
+            '==========================
+            ' Clear 6 columns safely
+            '==========================
+            Dim rr As Long, cc As Long
+            Dim cell As Range
+            Dim lastCol As Long
+            
+            lastCol = c.Column + 5
+            
+            rr = startRow
+            Do While rr < endRow
+                cc = c.Column
+                Do While cc <= lastCol
+                    Set cell = ws.Cells(rr, cc)
+                    If cell.MergeCells Then
+                        ' Clear the whole merged block
+                        cell.MergeArea.ClearContents
+                        ' Skip to column after merge area
+                        cc = cc + cell.MergeArea.Columns.Count
+                    Else
+                        cell.ClearContents
+                        cc = cc + 1
+                    End If
+                Loop
+                rr = rr + 1
+            Loop
+        
+        End If
+            
+        End If
+        
+    Next i
+    
+    
+    wb.Save
+    wb.Close False
+    
+    Application.ScreenUpdating = True
+
+End Sub

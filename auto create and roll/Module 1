@@ -1,7 +1,7 @@
 Option Explicit
 
 '=================================================
-' Vanir File Manager - Supports multiple base paths
+' Vanir File Manager - Fully working with fallback
 '=================================================
 Public Sub Vanir_File_Manager()
 
@@ -21,6 +21,9 @@ Public Sub Vanir_File_Manager()
     ' File prefixes for second path
     Dim futureTradeList As String, futureOldCurve As String, futureNewCurve As String
     
+    ' Variable to store source file once found
+    Dim sourceFile As String
+    
     On Error GoTo ErrHandler
     
     Set ws = ThisWorkbook.Worksheets("Sheet1")
@@ -35,13 +38,13 @@ Public Sub Vanir_File_Manager()
     ' --- Fizz ---
     fizzPath = Trim(ws.Range("A15").Value)
     fizzOldCurve = Trim(ws.Range("B29").Value)  ' Base file
-    fizzNewCurve = Trim(ws.Range("C29").Value)    ' New format
+    fizzNewCurve = Trim(ws.Range("C29").Value)  ' New format
     
     ' --- Future ---
     futurePath = Trim(ws.Range("A15").Value)
     futureTradeList = Trim(ws.Range("B25").Value)  ' Base file
     futureOldCurve = Trim(ws.Range("C25").Value)   ' Second file
-    futureNewCurve = Trim(ws.Range("D25").Value)    ' NEW FORMAT
+    futureNewCurve = Trim(ws.Range("D25").Value)   ' NEW FORMAT
     
     If userName = "" Or (fizzPath = "" And futurePath = "") Then
         MsgBox "Missing username or paths.", vbCritical
@@ -54,7 +57,7 @@ Public Sub Vanir_File_Manager()
     todayDate = Format(Date, dateFormat)
     
     '======================================
-    ' Process first base path
+    ' Process Fizz path
     '======================================
     If fizzPath <> "" Then
         If Right(fizzPath, 1) <> "\" Then fizzPath = fizzPath & "\"
@@ -63,14 +66,14 @@ Public Sub Vanir_File_Manager()
         
         If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
         
-        ' Base file
+        ' Process Fizz files using shared sourceFile
+        sourceFile = ""
         If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate) Then createdCount = createdCount + 1
-        ' New format file
         If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate) Then createdCount = createdCount + 1
     End If
     
     '======================================
-    ' Process second base path
+    ' Process Future path
     '======================================
     If futurePath <> "" Then
         If Right(futurePath, 1) <> "\" Then futurePath = futurePath & "\"
@@ -79,11 +82,10 @@ Public Sub Vanir_File_Manager()
         
         If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
         
-        ' Base file
+        ' Process Future files using same shared sourceFile
+        sourceFile = ""
         If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate) Then createdCount = createdCount + 1
-        ' Mid file (like c25)
         If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate) Then createdCount = createdCount + 1
-        ' Mid file + NEW FORMAT
         If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate) Then createdCount = createdCount + 1
     End If
     
@@ -107,32 +109,33 @@ ErrHandler:
 End Sub
 
 '=================================================
-' Process file with fallback to latest month / previous year
+' Process file with fallback
 '=================================================
 Private Function ProcessFileWithFallback(ByVal fso As Object, _
                                          ByVal folderPath As String, _
                                          ByVal baseName As String, _
                                          ByVal suffix As String, _
                                          ByVal todayDate As String) As Boolean
+
     Dim todayFile As String
     Dim latestFile As String
     Dim latestMonthFolder As String
     Dim prevYearFolder As String
     
-    ' Build file name (suffix optional)
+    ' Build today's file name
     If suffix = "" Then
         todayFile = folderPath & baseName & "_" & todayDate & ".xlsx"
     Else
         todayFile = folderPath & baseName & "_" & todayDate & " " & suffix & ".xlsx"
     End If
     
-    ' Check if today's file exists
+    ' Skip if already exists
     If fso.FileExists(todayFile) Then Exit Function
     
-    ' Step 1: Look for latest file in current year folder
+    ' Step 1: Check current year folder
     latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
     
-    ' Step 2: If empty, look in latest month folder
+    ' Step 2: Check month folders inside current year
     If latestFile = "" Then
         latestMonthFolder = GetLatestMonthFolder(fso, folderPath)
         If latestMonthFolder <> "" Then
@@ -140,23 +143,31 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
         End If
     End If
     
-    ' Step 3: If still nothing, fallback to previous year
+    ' Step 3: Fallback to previous year
     If latestFile = "" Then
-        prevYearFolder = Left(folderPath, InStrRev(folderPath, " ") - 1) & " " & (Year(Date) - 1) & "\"
+    
+        prevYearFolder = Replace(folderPath, CStr(Year(Date)), CStr(Year(Date) - 1))
+        
         If fso.FolderExists(prevYearFolder) Then
+        
             latestMonthFolder = GetLatestMonthFolder(fso, prevYearFolder)
+            
             If latestMonthFolder <> "" Then
                 latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
             End If
+            
         End If
+        
     End If
     
-    ' No source file found
+    ' If still nothing ? stop
     If latestFile = "" Then Exit Function
     
-    ' Copy latest to today's file
+    ' Copy correct file
     fso.CopyFile latestFile, todayFile
+    
     ProcessFileWithFallback = True
+
 End Function
 
 '=================================================
@@ -200,10 +211,12 @@ Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As S
     
     For Each subFolder In folder.SubFolders
         If Len(subFolder.Name) = 6 And IsNumeric(subFolder.Name) Then
-            Dim folderDate As Date
-            folderDate = DateSerial(CInt(Right(subFolder.Name, 4)), CInt(Left(subFolder.Name, 2)) + 1, 0)
-            If folderDate > latestDate Then
-                latestDate = folderDate
+            Dim folderMonth As Integer, folderYear As Integer
+            folderMonth = CInt(Left(subFolder.Name, 2))
+            folderYear = CInt(Right(subFolder.Name, 4))
+            
+            If DateSerial(folderYear, folderMonth, 1) > latestDate Then
+                latestDate = DateSerial(folderYear, folderMonth, 1)
                 latestFolder = subFolder.Path & "\"
             End If
         End If

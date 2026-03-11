@@ -6,6 +6,7 @@ Public Sub Vanir_File_Manager()
 
     Dim ws As Worksheet
     Dim fso As Object
+    Dim workingDate As Date
     
     Dim userName As String
     Dim fizzPath As String, futurePath As String
@@ -19,9 +20,6 @@ Public Sub Vanir_File_Manager()
     
     ' File prefixes for second path
     Dim futureTradeList As String, futureOldCurve As String, futureNewCurve As String
-    
-    ' Variable to store source file once found
-    Dim sourceFile As String
     
     On Error GoTo ErrHandler
     
@@ -53,7 +51,8 @@ Public Sub Vanir_File_Manager()
     '--------------------------------------
     ' Today's date
     '--------------------------------------
-    todayDate = Format(CDate(ws.Range("D2").Value), dateFormat)
+    workingDate = CDate(ws.Range("D2").Value)
+    todayDate = Format(workingDate, dateFormat)
     
     '======================================
     ' Process Fizz path
@@ -61,14 +60,13 @@ Public Sub Vanir_File_Manager()
     If fizzPath <> "" Then
         If Right(fizzPath, 1) <> "\" Then fizzPath = fizzPath & "\"
         fizzPath = "C:\Users\" & userName & "\" & fizzPath
-        yearFolder = fizzPath & "Vanir JPN Fizz Curve Archive " & Year(Date) & "\"
+        yearFolder = fizzPath & "Vanir JPN Fizz Curve Archive " & Year(workingDate) & "\"
         
         If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
         
         ' Process Fizz files using shared sourceFile
-        sourceFile = ""
-        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate, workingDate) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, workingDate) Then createdCount = createdCount + 1
         
         
     End If
@@ -79,15 +77,14 @@ Public Sub Vanir_File_Manager()
     If futurePath <> "" Then
         If Right(futurePath, 1) <> "\" Then futurePath = futurePath & "\"
         futurePath = "C:\Users\" & userName & "\" & futurePath
-        yearFolder = futurePath & "Vanir JPN Curve Archive " & Year(Date) & "\"
+        yearFolder = futurePath & "Vanir JPN Curve Archive " & Year(workingDate) & "\"
         
         If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
         
         ' Process Future files using same shared sourceFile
-        sourceFile = ""
-        If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate, ws.Range("D2").Value) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate, workingDate) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate, workingDate) Then createdCount = createdCount + 1
+        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate, workingDate) Then createdCount = createdCount + 1
     End If
     
     '--------------------------------------
@@ -148,7 +145,7 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
     ' Step 3: Fallback to previous year
     If latestFile = "" Then
     
-        prevYearFolder = Replace(folderPath, CStr(Year(Date)), CStr(Year(Date) - 1))
+        prevYearFolder = Replace(folderPath, CStr(Year(todayValue)), CStr(Year(todayValue) - 1))
         
         If fso.FolderExists(prevYearFolder) Then
         
@@ -270,7 +267,12 @@ Private Sub ClearRowsFrom2(ByVal filePath As String)
     Set wb = Workbooks.Open(filePath)
     
     For Each ws In wb.Worksheets
-        ws.Rows("2:" & ws.Rows.Count).ClearContents
+        Dim lastRow As Long
+        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        
+        If lastRow >= 2 Then
+            ws.Rows("2:" & lastRow).ClearContents
+        End If
     Next ws
     
     wb.Save
@@ -288,13 +290,13 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As
     Dim wb As Workbook
     Dim ws As Worksheet
     Dim c As Range
-    Dim r As Long
     Dim startRow As Long
     Dim endRow As Long
     Dim todayText As String
     Dim sectionNames As Variant
     Dim i As Long
     
+    On Error GoTo CleanExit
     Application.ScreenUpdating = False
     
     todayText = Format(CDate(todayValue), "d mmm yyyy")
@@ -374,6 +376,7 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As
     wb.Save
     wb.Close False
     
+CleanExit:
     Application.ScreenUpdating = True
 
 End Sub

@@ -13,13 +13,17 @@ Public Sub Vanir_File_Manager()
     Dim yearFolder As String
     Dim todayDate As String
     Dim dateFormat As String
-    Dim createdCount As Long
     
     ' File prefixes for first path
     Dim fizzOldCurve As String, fizzNewCurve As String
     
     ' File prefixes for second path
     Dim futureTradeList As String, futureOldCurve As String, futureNewCurve As String
+    
+    ' Track created/edited files
+    Dim createdFiles As New Collection
+    Dim editedFiles As New Collection
+    
     
     On Error GoTo ErrHandler
     
@@ -64,11 +68,9 @@ Public Sub Vanir_File_Manager()
         
         If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
         
-        ' Process Fizz files using shared sourceFile
-        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, "", todayDate, workingDate) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, workingDate) Then createdCount = createdCount + 1
-        
-        
+        ' Process Fizz files
+        ProcessFileWithFallback fso, yearFolder, fizzOldCurve, "", todayDate, workingDate, createdFiles, editedFiles
+        ProcessFileWithFallback fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, workingDate, createdFiles, editedFiles
     End If
     
     '======================================
@@ -81,20 +83,39 @@ Public Sub Vanir_File_Manager()
         
         If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
         
-        ' Process Future files using same shared sourceFile
-        If ProcessFileWithFallback(fso, yearFolder, futureTradeList, "", todayDate, workingDate) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, "", todayDate, workingDate) Then createdCount = createdCount + 1
-        If ProcessFileWithFallback(fso, yearFolder, futureOldCurve, futureNewCurve, todayDate, workingDate) Then createdCount = createdCount + 1
+        ' Process Future files
+        ProcessFileWithFallback fso, yearFolder, futureTradeList, "", todayDate, workingDate, createdFiles, editedFiles
+        ProcessFileWithFallback fso, yearFolder, futureOldCurve, "", todayDate, workingDate, createdFiles, editedFiles
+        ProcessFileWithFallback fso, yearFolder, futureOldCurve, futureNewCurve, todayDate, workingDate, createdFiles, editedFiles
     End If
     
     '--------------------------------------
-    ' Result message
+    ' Show summary (only file names)
     '--------------------------------------
-    If createdCount = 0 Then
-        MsgBox "Today's files already exist in all folders.", vbInformation
+    Dim msg As String
+    Dim f As Variant
+    
+    msg = "Summary of today's run:" & vbCrLf & vbCrLf
+    
+    If createdFiles.Count > 0 Then
+        msg = msg & "Created files:" & vbCrLf
+        For Each f In createdFiles
+            msg = msg & " - " & Dir(f) & vbCrLf
+        Next f
     Else
-        MsgBox createdCount & " file(s) created.", vbInformation
+        msg = msg & "No new files created." & vbCrLf
     End If
+    
+    If editedFiles.Count > 0 Then
+        msg = msg & vbCrLf & "Edited workbooks:" & vbCrLf
+        For Each f In editedFiles
+            msg = msg & " - " & Dir(f) & vbCrLf
+        Next f
+    Else
+        msg = msg & vbCrLf & "No workbooks edited."
+    End If
+    
+    MsgBox msg, vbInformation, "Vanir Daily Summary"
 
 ExitProc:
     Set fso = Nothing
@@ -114,12 +135,15 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
                                          ByVal baseName As String, _
                                          ByVal suffix As String, _
                                          ByVal todayDate As String, _
-                                         ByVal todayValue As Variant) As Boolean
+                                         ByVal todayValue As Variant, _
+                                         ByRef createdFiles As Collection, _
+                                         ByRef editedFiles As Collection) As Boolean
 
     Dim todayFile As String
     Dim latestFile As String
     Dim latestMonthFolder As String
     Dim prevYearFolder As String
+    Dim didCloneToday As Boolean
     
     ' Build today's file name
     If suffix = "" Then
@@ -128,56 +152,69 @@ Private Function ProcessFileWithFallback(ByVal fso As Object, _
         todayFile = folderPath & baseName & "_" & todayDate & " " & suffix & ".xlsx"
     End If
     
-    ' Skip if already exists
-    If fso.FileExists(todayFile) Then Exit Function
-    
-    ' Step 1: Check current year folder
+    ' Step 1: Find the latest source file
     latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
     
-    ' Step 2: Check month folders inside current year
     If latestFile = "" Then
         latestMonthFolder = GetLatestMonthFolder(fso, folderPath)
-        If latestMonthFolder <> "" Then
-            latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
-        End If
+        If latestMonthFolder <> "" Then latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
     End If
     
-    ' Step 3: Fallback to previous year
     If latestFile = "" Then
-    
         prevYearFolder = Replace(folderPath, CStr(Year(todayValue)), CStr(Year(todayValue) - 1))
-        
         If fso.FolderExists(prevYearFolder) Then
-        
             latestMonthFolder = GetLatestMonthFolder(fso, prevYearFolder)
-            
-            If latestMonthFolder <> "" Then
-                latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
-            End If
-            
+            If latestMonthFolder <> "" Then latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
         End If
-        
     End If
     
-    ' If still nothing ? stop
+    ' Exit if no source file found
     If latestFile = "" Then Exit Function
     
-    '------ Resetting the tradelist or curve --------
-    ' Copy correct file
-    fso.CopyFile latestFile, todayFile
-    ' If this is NEW FORMAT file, clear data
-    If InStr(1, todayFile, "NEW FORMAT", vbTextCompare) > 0 Then
-        ClearRowsFrom2 todayFile
+    ' ------------------------------------------------------
+    ' CLONE today only if file doesn't exist
+    ' ------------------------------------------------------
+    didCloneToday = False
+    If Not fso.FileExists(todayFile) Then
+        fso.CopyFile latestFile, todayFile
+        On Error Resume Next
+        createdFiles.Add todayFile
+        On Error GoTo 0
+        didCloneToday = True
     End If
     
-    ' If Futures Tradelist update data
-    If InStr(1, todayFile, "Tradelist", vbTextCompare) > 0 Then
-        ProcessFutureTradeList todayFile, todayValue
+    ' ------------------------------------------------------
+    ' Only edit if we cloned today
+    ' ------------------------------------------------------
+    If didCloneToday Then
+        If InStr(1, todayFile, "NEW FORMAT", vbTextCompare) > 0 Then
+            ClearRowsFrom2 todayFile
+            editedFiles.Add todayFile
+        End If
+        
+        If InStr(1, todayFile, "Tradelist", vbTextCompare) > 0 Then
+            ProcessFutureTradeList todayFile, todayValue
+            editedFiles.Add todayFile
+        End If
+        
+        If InStr(1, todayFile, "Curve", vbTextCompare) > 0 _
+        And InStr(1, todayFile, "PHYSICAL", vbTextCompare) > 0 _
+        And InStr(1, todayFile, "NEW FORMAT", vbTextCompare) = 0 Then
+            ResetPhysicalSheetsDaily todayFile
+            editedFiles.Add todayFile
+        End If
+        
+        ' Futures old curve (future logic)
+        If InStr(1, todayFile, "Curve", vbTextCompare) > 0 _
+        And InStr(1, todayFile, "PHYSICAL", vbTextCompare) = 0 _
+        And InStr(1, todayFile, "NEW FORMAT", vbTextCompare) = 0 Then
+            ' ResetFuturesCurve todayFile
+        End If
     End If
     
     ProcessFileWithFallback = True
-
 End Function
+
 '=================================================
 ' Find latest file matching base name and optional suffix
 '=================================================
@@ -193,37 +230,22 @@ Private Function GetLatestFile(ByVal fso As Object, _
     newestDate = #1/1/1900#
     
     For Each file In folder.Files
-    
         If InStr(1, file.Name, baseName, vbTextCompare) > 0 Then
-            
-            '---------------------------------
-            ' FIX: prevent old/new mix up
-            '---------------------------------
-            
-            ' Old curve: ignore NEW FORMAT files
             If suffix = "" Then
                 If InStr(1, file.Name, "NEW FORMAT", vbTextCompare) > 0 Then GoTo SkipFile
-            End If
-            
-            ' New format: only accept NEW FORMAT files
-            If suffix <> "" Then
+            Else
                 If InStr(1, file.Name, suffix, vbTextCompare) = 0 Then GoTo SkipFile
             End If
-            
-            '---------------------------------
             
             If file.DateLastModified > newestDate Then
                 newestDate = file.DateLastModified
                 newestFile = file.Path
             End If
-            
         End If
-        
 SkipFile:
     Next file
     
     GetLatestFile = newestFile
-
 End Function
 
 '=================================================
@@ -257,9 +279,7 @@ End Function
 ' Clear rows from row 2 onwards
 '=================================================
 Private Sub ClearRowsFrom2(ByVal filePath As String)
-
-    Dim wb As Workbook
-    Dim ws As Worksheet
+    Dim wb As Workbook, ws As Worksheet
     
     Application.ScreenUpdating = False
     Application.DisplayAlerts = False
@@ -269,10 +289,7 @@ Private Sub ClearRowsFrom2(ByVal filePath As String)
     For Each ws In wb.Worksheets
         Dim lastRow As Long
         lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-        
-        If lastRow >= 2 Then
-            ws.Rows("2:" & lastRow).ClearContents
-        End If
+        If lastRow >= 2 Then ws.Rows("2:" & lastRow).ClearContents
     Next ws
     
     wb.Save
@@ -280,58 +297,33 @@ Private Sub ClearRowsFrom2(ByVal filePath As String)
     
     Application.DisplayAlerts = True
     Application.ScreenUpdating = True
-
 End Sub
+
 '=================================================
 ' Update Futures Tradelist content
 '=================================================
 Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As Variant)
-
-    Dim wb As Workbook
-    Dim ws As Worksheet
-    Dim c As Range
-    Dim startRow As Long
-    Dim endRow As Long
-    Dim todayText As String
-    Dim sectionNames As Variant
-    Dim i As Long
-    
+    Dim wb As Workbook, ws As Worksheet, c As Range
+    Dim startRow As Long, endRow As Long, todayText As String
+    Dim sectionNames As Variant, i As Long
     On Error GoTo CleanExit
     Application.ScreenUpdating = False
     
     todayText = Format(CDate(todayValue), "d mmm yyyy")
-    
     Set wb = Workbooks.Open(filePath)
     Set ws = wb.Worksheets(1)
     
-    '---------------------------
-    ' Update Date
-    '---------------------------
     Set c = ws.Cells.Find("Date:", LookAt:=xlPart, MatchCase:=False)
+    If Not c Is Nothing Then c.Offset(0, 1).Value = todayText
     
-    If Not c Is Nothing Then
-        c.Offset(0, 1).Value = todayText
-    End If
-    
-    ' Sections we need
     sectionNames = Array("FUTURES", "OPTIONS", "OTC - VGM ONLY")
     
-    '---------------------------
-    ' Process each section
-    '---------------------------
     For i = LBound(sectionNames) To UBound(sectionNames)
-        
         Set c = ws.Cells.Find(sectionNames(i), LookAt:=xlWhole, MatchCase:=False)
-        
         If Not c Is Nothing Then
-            
-            ' move to Product row
             If Trim(ws.Cells(c.Row + 1, c.Column).Value) = "Product" Then
-
                 startRow = c.Row + 2
                 endRow = startRow
-                
-                ' find end of data
                 Do
                     If ws.Cells(endRow, c.Column).Value = "" Then Exit Do
                     If ws.Cells(endRow, c.Column).Value = "OTC" _
@@ -340,24 +332,15 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As
                     endRow = endRow + 1
                 Loop
                 
-                '==========================
-                ' Clear 6 columns safely
-                '==========================
-                Dim rr As Long, cc As Long
-                Dim cell As Range
-                Dim lastCol As Long
-                
+                Dim rr As Long, cc As Long, cell As Range, lastCol As Long
                 lastCol = c.Column + 5
-                
                 rr = startRow
                 Do While rr < endRow
                     cc = c.Column
                     Do While cc <= lastCol
                         Set cell = ws.Cells(rr, cc)
                         If cell.MergeCells Then
-                            ' Clear the whole merged block
                             cell.MergeArea.ClearContents
-                            ' Skip to column after merge area
                             cc = cc + cell.MergeArea.Columns.Count
                         Else
                             cell.ClearContents
@@ -366,11 +349,8 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As
                     Loop
                     rr = rr + 1
                 Loop
-            
             End If
-                
         End If
-        
     Next i
     
     wb.Save
@@ -378,6 +358,76 @@ Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As
     
 CleanExit:
     Application.ScreenUpdating = True
-
 End Sub
 
+'=================================================
+' Reset Fizz Curve Sheet Content (Physical Sheets)
+' Returns collection of edited files
+'=================================================
+Private Sub ResetPhysicalSheetsDaily(ByVal filePath As String)
+
+    Dim wb As Workbook, ws As Worksheet, cell As Range
+    Dim lastCol As Long, newCol As Long, lastRow As Long, r As Long
+    Dim todayDate As String, clrE2EFDA As Long
+    
+    On Error GoTo CleanExit
+    
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    
+    'todayDate = Format(Date, "dd-mmm-yy")
+    todayDate = Format(CDate(ThisWorkbook.Worksheets("Sheet1").Range("D2").Value), "dd-mmm-yy")
+    clrE2EFDA = RGB(226, 239, 218)
+    
+    'Open workbook
+    Set wb = Workbooks.Open(filePath)
+    
+    'Check workbook opened
+    If wb Is Nothing Then GoTo CleanExit
+    
+    For Each ws In wb.Worksheets
+        
+        If InStr(1, ws.Name, "curve", vbTextCompare) = 0 Then
+        
+            lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
+            newCol = lastCol + 1
+            
+            ws.Columns(lastCol).Copy
+            ws.Columns(newCol).PasteSpecial xlPasteAll
+            
+            ws.Cells(1, newCol).Value = todayDate
+            
+            lastRow = ws.Cells(ws.Rows.Count, newCol).End(xlUp).Row
+            
+            For r = 2 To lastRow
+            
+                Set cell = ws.Cells(r, newCol)
+                
+                If Not cell.HasFormula Then
+                    If cell.Font.Color <> vbRed Then
+                        If cell.Interior.Color = xlNone _
+                        Or cell.Interior.Color = RGB(255, 255, 255) _
+                        Or cell.Interior.Color = clrE2EFDA Then
+                        
+                            cell.ClearContents
+                        
+                        End If
+                    End If
+                End If
+                
+            Next r
+            
+        End If
+        
+    Next ws
+    
+    wb.Save
+    wb.Close False
+
+CleanExit:
+
+    Application.CutCopyMode = False
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+
+End Sub

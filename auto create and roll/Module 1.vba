@@ -1,433 +1,169 @@
 Option Explicit
-'=================================================
-' Vanir File Manager - Fully working with fallback
-'=================================================
-Public Sub Vanir_File_Manager()
 
-    Dim ws As Worksheet
-    Dim fso As Object
-    Dim workingDate As Date
+'============================================================
+' Macro: Import Old Japan Fizz Curve (robust MTD + West Region search)
+'============================================================
+Public Sub Old_Japan_Fizz_Curve()
+
+    Dim wbOriginOld As Workbook
+    Dim wbDestOld As Workbook
+    Dim wsCurveOld As Worksheet
+    Dim wsCurveDestOld As Worksheet
+
+    Dim originPatternOld As String
+    Dim destPatternOld As String
+    Dim todayYYMMDDOld As String
+    Dim todayDDMMYY As String
     
-    Dim userName As String
-    Dim fizzPath As String, futurePath As String
-    Dim yearFolder As String
-    Dim todayDate As String
-    Dim dateFormat As String
+    Dim wbOld As Workbook
+    Dim fMTD As Range, fDestMTD As Range
+    Dim fWest As Range
+    Dim startRowOld As Long, lastRowOld As Long
+    Dim startColOld As Long, endColOld As Long
+    Dim rngCopyOld As Range
+    Dim numRows As Long, numCols As Long
+    Dim r As Long
     
-    ' File prefixes for first path
-    Dim fizzOldCurve As String, fizzNewCurve As String
+    '--------------------------------------------------------
+    ' Date
+    '--------------------------------------------------------
+    todayDDMMYY = Sheet1.Range("A3").Value
+    todayYYMMDDOld = Format(todayDDMMYY, "yy.mm.dd")
     
-    ' File prefixes for second path
-    Dim futureTradeList As String, futureOldCurve As String, futureNewCurve As String
+    '--------------------------------------------------------
+    ' Workbook patterns
+    '--------------------------------------------------------
+    originPatternOld = "*FIZZ CURVE SHEET - MASTER v1*"
+    destPatternOld = "*Vanir Japan Power Curve_PHYSICAL_" & todayYYMMDDOld & "*.xls*"
     
-    ' Track created/edited files
-    Dim createdFiles As New Collection
-    Dim editedFiles As New Collection
-    
-    
-    On Error GoTo ErrHandler
-    
-    Set ws = ThisWorkbook.Worksheets("Sheet1")
-    Set fso = CreateObject("Scripting.FileSystemObject")
-    
-    '--------------------------------------
-    ' Read config from sheet
-    '--------------------------------------
-    userName = Trim(ws.Range("D4").Value)
-    dateFormat = ws.Range("A4").Value
-    
-    ' --- Fizz ---
-    fizzPath = Trim(ws.Range("A15").Value)
-    fizzOldCurve = Trim(ws.Range("B29").Value)  ' Base file
-    fizzNewCurve = Trim(ws.Range("C29").Value)  ' New format
-    
-    ' --- Future ---
-    futurePath = Trim(ws.Range("A15").Value)
-    futureTradeList = Trim(ws.Range("B25").Value)  ' Base file
-    futureOldCurve = Trim(ws.Range("C25").Value)   ' Second file
-    futureNewCurve = Trim(ws.Range("D25").Value)   ' NEW FORMAT
-    
-    If userName = "" Or (fizzPath = "" And futurePath = "") Then
-        MsgBox "Missing username or paths.", vbCritical
+    '--------------------------------------------------------
+    ' Find origin workbook
+    '--------------------------------------------------------
+    For Each wbOld In Workbooks
+        If wbOld.Name Like originPatternOld Then
+            Set wbOriginOld = wbOld
+            Exit For
+        End If
+    Next wbOld
+    If wbOriginOld Is Nothing Then
+        MsgBox "Origin workbook not open", vbCritical
         Exit Sub
     End If
     
-    '--------------------------------------
-    ' Today's date
-    '--------------------------------------
-    workingDate = CDate(ws.Range("D2").Value)
-    todayDate = Format(workingDate, dateFormat)
-    
-    '======================================
-    ' Process Fizz path
-    '======================================
-    If fizzPath <> "" Then
-        If Right(fizzPath, 1) <> "\" Then fizzPath = fizzPath & "\"
-        fizzPath = "C:\Users\" & userName & "\" & fizzPath
-        yearFolder = fizzPath & "Vanir JPN Fizz Curve Archive " & Year(workingDate) & "\"
-        
-        If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
-        
-        ' Process Fizz files
-        ProcessFileWithFallback fso, yearFolder, fizzOldCurve, "", todayDate, workingDate, createdFiles, editedFiles
-        ProcessFileWithFallback fso, yearFolder, fizzOldCurve, fizzNewCurve, todayDate, workingDate, createdFiles, editedFiles
+    '--------------------------------------------------------
+    ' Find destination workbook
+    '--------------------------------------------------------
+    For Each wbOld In Workbooks
+        If wbOld.Name Like destPatternOld Then
+            Set wbDestOld = wbOld
+            Exit For
+        End If
+    Next wbOld
+    If wbDestOld Is Nothing Then
+        MsgBox "Destination workbook not open", vbCritical
+        Exit Sub
     End If
     
-    '======================================
-    ' Process Future path
-    '======================================
-    If futurePath <> "" Then
-        If Right(futurePath, 1) <> "\" Then futurePath = futurePath & "\"
-        futurePath = "C:\Users\" & userName & "\" & futurePath
-        yearFolder = futurePath & "Vanir JPN Curve Archive " & Year(workingDate) & "\"
-        
-        If Not fso.FolderExists(yearFolder) Then fso.CreateFolder yearFolder
-        
-        ' Process Future files
-        ProcessFileWithFallback fso, yearFolder, futureTradeList, "", todayDate, workingDate, createdFiles, editedFiles
-        ProcessFileWithFallback fso, yearFolder, futureOldCurve, "", todayDate, workingDate, createdFiles, editedFiles
-        ProcessFileWithFallback fso, yearFolder, futureOldCurve, futureNewCurve, todayDate, workingDate, createdFiles, editedFiles
+    '--------------------------------------------------------
+    ' Resolve sheets
+    '--------------------------------------------------------
+    Set wsCurveOld = GetSheetByNameInsensitive(wbOriginOld, "Base_Peak_Combined")
+    Set wsCurveDestOld = GetSheetByNameInsensitive(wbDestOld, "Curve")
+    If wsCurveOld Is Nothing Or wsCurveDestOld Is Nothing Then
+        MsgBox "Required sheet missing", vbCritical
+        Exit Sub
     End If
     
-    '--------------------------------------
-    ' Show summary (only file names)
-    '--------------------------------------
-    Dim msg As String
-    Dim f As Variant
+    '--------------------------------------------------------
+    ' Find Base/Peak in origin sheet
+    '--------------------------------------------------------
+    Set fMTD = wsCurveOld.Cells.Find(What:="BASE/PEAK", LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
+    If fMTD Is Nothing Then
+        MsgBox "'BASE/PEAK' not found in origin sheet", vbCritical
+        Exit Sub
+    End If
+    startRowOld = fMTD.Row + 1
+    startColOld = fMTD.Column
     
-    msg = "Summary of today's run:" & vbCrLf & vbCrLf
+    '--------------------------------------------------------
+    ' Find last non-empty row below MTD
+    '--------------------------------------------------------
+    lastRowOld = startRowOld
+    For r = startRowOld To wsCurveOld.Rows.Count
+        If Application.WorksheetFunction.CountA(wsCurveOld.Rows(r)) = 0 Then Exit For
+        lastRowOld = r
+    Next r
     
-    If createdFiles.Count > 0 Then
-        msg = msg & "Created files:" & vbCrLf
-        For Each f In createdFiles
-            msg = msg & " - " & Dir(f) & vbCrLf
-        Next f
+    '--------------------------------------------------------
+    ' Find West Region anywhere in origin sheet
+    '--------------------------------------------------------
+    Set fWest = wsCurveOld.Cells.Find(What:=Sheet1.Range("A10").Value, LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
+    If fWest Is Nothing Then
+        MsgBox "'West Region' not found in origin sheet", vbCritical
+        Exit Sub
+    End If
+    
+    ' Get last column of West Region (merged aware)
+    If fWest.MergeCells Then
+        endColOld = fWest.mergeArea.Columns(fWest.mergeArea.Columns.Count).Column
     Else
-        msg = msg & "No new files created." & vbCrLf
+        endColOld = fWest.Column
     End If
     
-    If editedFiles.Count > 0 Then
-        msg = msg & vbCrLf & "Edited workbooks:" & vbCrLf
-        For Each f In editedFiles
-            msg = msg & " - " & Dir(f) & vbCrLf
-        Next f
-    Else
-        msg = msg & vbCrLf & "No workbooks edited."
+    '--------------------------------------------------------
+    ' Compute rows and columns to copy
+    '--------------------------------------------------------
+    numRows = lastRowOld - startRowOld + 1
+    numCols = endColOld - startColOld + 1
+    
+    If numRows <= 0 Or numCols <= 0 Then
+        MsgBox "Invalid copy size. Check BASE/PEAK and West Region positions.", vbCritical
+        Exit Sub
     End If
     
-    MsgBox msg, vbInformation, "Vanir Daily Summary"
-
-ExitProc:
-    Set fso = Nothing
-    Exit Sub
-
-ErrHandler:
-    MsgBox "Error: " & Err.Description, vbCritical
-    Resume ExitProc
+    '--------------------------------------------------------
+    ' Set copy range in origin
+    '--------------------------------------------------------
+    Set rngCopyOld = wsCurveOld.Range(wsCurveOld.Cells(startRowOld, startColOld), _
+                                      wsCurveOld.Cells(lastRowOld, endColOld))
+    
+    '--------------------------------------------------------
+    ' Find MTD in destination sheet
+    '--------------------------------------------------------
+    Set fDestMTD = wsCurveDestOld.Cells.Find(What:="MtD", LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
+    If fDestMTD Is Nothing Then
+        MsgBox "'MTD' not found in destination sheet", vbCritical
+        Exit Sub
+    End If
+    
+    '--------------------------------------------------------
+    ' Set destination range same size as copy range
+    '--------------------------------------------------------
+    Dim destRange As Range
+    Set destRange = wsCurveDestOld.Range(fDestMTD, _
+                                         wsCurveDestOld.Cells(fDestMTD.Row + numRows - 2, _
+                                                              fDestMTD.Column + numCols - 1))
+    
+    '--------------------------------------------------------
+    ' Paste values
+    '--------------------------------------------------------
+    destRange.Value = rngCopyOld.Value
+    
+    wbDestOld.Save
+    MsgBox "Old Japan Fizz Curve pasted successfully", vbInformation
 
 End Sub
 
-'=================================================
-' Process file with fallback
-'=================================================
-Private Function ProcessFileWithFallback(ByVal fso As Object, _
-                                         ByVal folderPath As String, _
-                                         ByVal baseName As String, _
-                                         ByVal suffix As String, _
-                                         ByVal todayDate As String, _
-                                         ByVal todayValue As Variant, _
-                                         ByRef createdFiles As Collection, _
-                                         ByRef editedFiles As Collection) As Boolean
-
-    Dim todayFile As String
-    Dim latestFile As String
-    Dim latestMonthFolder As String
-    Dim prevYearFolder As String
-    Dim didCloneToday As Boolean
-    
-    ' Build today's file name
-    If suffix = "" Then
-        todayFile = folderPath & baseName & "_" & todayDate & ".xlsx"
-    Else
-        todayFile = folderPath & baseName & "_" & todayDate & " " & suffix & ".xlsx"
-    End If
-    
-    ' Step 1: Find the latest source file
-    latestFile = GetLatestFile(fso, folderPath, baseName, suffix)
-    
-    If latestFile = "" Then
-        latestMonthFolder = GetLatestMonthFolder(fso, folderPath)
-        If latestMonthFolder <> "" Then latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
-    End If
-    
-    If latestFile = "" Then
-        prevYearFolder = Replace(folderPath, CStr(Year(todayValue)), CStr(Year(todayValue) - 1))
-        If fso.FolderExists(prevYearFolder) Then
-            latestMonthFolder = GetLatestMonthFolder(fso, prevYearFolder)
-            If latestMonthFolder <> "" Then latestFile = GetLatestFile(fso, latestMonthFolder, baseName, suffix)
-        End If
-    End If
-    
-    ' Exit if no source file found
-    If latestFile = "" Then Exit Function
-    
-    ' ------------------------------------------------------
-    ' CLONE today only if file doesn't exist
-    ' ------------------------------------------------------
-    didCloneToday = False
-    If Not fso.FileExists(todayFile) Then
-        fso.CopyFile latestFile, todayFile
-        On Error Resume Next
-        createdFiles.Add todayFile
-        On Error GoTo 0
-        didCloneToday = True
-    End If
-    
-    ' ------------------------------------------------------
-    ' Only edit if we cloned today
-    ' ------------------------------------------------------
-    If didCloneToday Then
-        If InStr(1, todayFile, "NEW FORMAT", vbTextCompare) > 0 Then
-            ClearRowsFrom2 todayFile
-            editedFiles.Add todayFile
-        End If
-        
-        If InStr(1, todayFile, "Tradelist", vbTextCompare) > 0 Then
-            ProcessFutureTradeList todayFile, todayValue
-            editedFiles.Add todayFile
-        End If
-        
-        If InStr(1, todayFile, "Curve", vbTextCompare) > 0 _
-        And InStr(1, todayFile, "PHYSICAL", vbTextCompare) > 0 _
-        And InStr(1, todayFile, "NEW FORMAT", vbTextCompare) = 0 Then
-            ResetPhysicalSheetsDaily todayFile
-            editedFiles.Add todayFile
-        End If
-        
-        ' Futures old curve (future logic)
-        If InStr(1, todayFile, "Curve", vbTextCompare) > 0 _
-        And InStr(1, todayFile, "PHYSICAL", vbTextCompare) = 0 _
-        And InStr(1, todayFile, "NEW FORMAT", vbTextCompare) = 0 Then
-            ' ResetFuturesCurve todayFile
-        End If
-    End If
-    
-    ProcessFileWithFallback = True
-End Function
-
-'=================================================
-' Find latest file matching base name and optional suffix
-'=================================================
-Private Function GetLatestFile(ByVal fso As Object, _
-                               ByVal folderPath As String, _
-                               ByVal baseName As String, _
-                               ByVal suffix As String) As String
-    Dim folder As Object, file As Object
-    Dim newestDate As Date, newestFile As String
-    
-    If Not fso.FolderExists(folderPath) Then Exit Function
-    Set folder = fso.GetFolder(folderPath)
-    newestDate = #1/1/1900#
-    
-    For Each file In folder.Files
-        If InStr(1, file.Name, baseName, vbTextCompare) > 0 Then
-            If suffix = "" Then
-                If InStr(1, file.Name, "NEW FORMAT", vbTextCompare) > 0 Then GoTo SkipFile
-            Else
-                If InStr(1, file.Name, suffix, vbTextCompare) = 0 Then GoTo SkipFile
-            End If
-            
-            If file.DateLastModified > newestDate Then
-                newestDate = file.DateLastModified
-                newestFile = file.Path
-            End If
-        End If
-SkipFile:
-    Next file
-    
-    GetLatestFile = newestFile
-End Function
-
-'=================================================
-' Get latest month folder in mmyyyy format inside a year folder
-'=================================================
-Private Function GetLatestMonthFolder(ByVal fso As Object, ByVal yearFolder As String) As String
-    Dim folder As Object, subFolder As Object
-    Dim latestDate As Date, latestFolder As String
-    
-    If Not fso.FolderExists(yearFolder) Then Exit Function
-    Set folder = fso.GetFolder(yearFolder)
-    latestDate = #1/1/1900#
-    
-    For Each subFolder In folder.SubFolders
-        If Len(subFolder.Name) = 6 And IsNumeric(subFolder.Name) Then
-            Dim folderMonth As Integer, folderYear As Integer
-            folderMonth = CInt(Left(subFolder.Name, 2))
-            folderYear = CInt(Right(subFolder.Name, 4))
-            
-            If DateSerial(folderYear, folderMonth, 1) > latestDate Then
-                latestDate = DateSerial(folderYear, folderMonth, 1)
-                latestFolder = subFolder.Path & "\"
-            End If
-        End If
-    Next subFolder
-    
-    GetLatestMonthFolder = latestFolder
-End Function
-
-'=================================================
-' Clear rows from row 2 onwards
-'=================================================
-Private Sub ClearRowsFrom2(ByVal filePath As String)
-    Dim wb As Workbook, ws As Worksheet
-    
-    Application.ScreenUpdating = False
-    Application.DisplayAlerts = False
-    
-    Set wb = Workbooks.Open(filePath)
-    
+'============================================================
+' Helper: Get Sheet by Name (Case-Insensitive)
+'============================================================
+Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) As Worksheet
+    Dim ws As Worksheet
     For Each ws In wb.Worksheets
-        Dim lastRow As Long
-        lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
-        If lastRow >= 2 Then ws.Rows("2:" & lastRow).ClearContents
-    Next ws
-    
-    wb.Save
-    wb.Close False
-    
-    Application.DisplayAlerts = True
-    Application.ScreenUpdating = True
-End Sub
-
-'=================================================
-' Update Futures Tradelist content
-'=================================================
-Private Sub ProcessFutureTradeList(ByVal filePath As String, ByVal todayValue As Variant)
-    Dim wb As Workbook, ws As Worksheet, c As Range
-    Dim startRow As Long, endRow As Long, todayText As String
-    Dim sectionNames As Variant, i As Long
-    On Error GoTo CleanExit
-    Application.ScreenUpdating = False
-    
-    todayText = Format(CDate(todayValue), "d mmm yyyy")
-    Set wb = Workbooks.Open(filePath)
-    Set ws = wb.Worksheets(1)
-    
-    Set c = ws.Cells.Find("Date:", LookAt:=xlPart, MatchCase:=False)
-    If Not c Is Nothing Then c.Offset(0, 1).Value = todayText
-    
-    sectionNames = Array("FUTURES", "OPTIONS", "OTC - VGM ONLY")
-    
-    For i = LBound(sectionNames) To UBound(sectionNames)
-        Set c = ws.Cells.Find(sectionNames(i), LookAt:=xlWhole, MatchCase:=False)
-        If Not c Is Nothing Then
-            If Trim(ws.Cells(c.Row + 1, c.Column).Value) = "Product" Then
-                startRow = c.Row + 2
-                endRow = startRow
-                Do
-                    If ws.Cells(endRow, c.Column).Value = "" Then Exit Do
-                    If ws.Cells(endRow, c.Column).Value = "OTC" _
-                    Or ws.Cells(endRow, c.Column).Value = "VGM" _
-                    Or ws.Cells(endRow, c.Column).Value = "OTC - VGM ONLY" Then Exit Do
-                    endRow = endRow + 1
-                Loop
-                
-                Dim rr As Long, cc As Long, cell As Range, lastCol As Long
-                lastCol = c.Column + 5
-                rr = startRow
-                Do While rr < endRow
-                    cc = c.Column
-                    Do While cc <= lastCol
-                        Set cell = ws.Cells(rr, cc)
-                        If cell.MergeCells Then
-                            cell.MergeArea.ClearContents
-                            cc = cc + cell.MergeArea.Columns.Count
-                        Else
-                            cell.ClearContents
-                            cc = cc + 1
-                        End If
-                    Loop
-                    rr = rr + 1
-                Loop
-            End If
+        If StrComp(Trim(ws.Name), Trim(sheetName), vbTextCompare) = 0 Then
+            Set GetSheetByNameInsensitive = ws
+            Exit Function
         End If
-    Next i
-    
-    wb.Save
-    wb.Close False
-    
-CleanExit:
-    Application.ScreenUpdating = True
-End Sub
-
-'=================================================
-' Reset Fizz Curve Sheet Content (Physical Sheets)
-' Returns collection of edited files
-'=================================================
-Private Sub ResetPhysicalSheetsDaily(ByVal filePath As String)
-
-    Dim wb As Workbook, ws As Worksheet, cell As Range
-    Dim lastCol As Long, newCol As Long, lastRow As Long, r As Long
-    Dim todayDate As String, clrE2EFDA As Long
-    
-    On Error GoTo CleanExit
-    
-    Application.ScreenUpdating = False
-    Application.Calculation = xlCalculationManual
-    
-    'todayDate = Format(Date, "dd-mmm-yy")
-    todayDate = Format(CDate(ThisWorkbook.Worksheets("Sheet1").Range("D2").Value), "dd-mmm-yy")
-    clrE2EFDA = RGB(226, 239, 218)
-    
-    'Open workbook
-    Set wb = Workbooks.Open(filePath)
-    
-    'Check workbook opened
-    If wb Is Nothing Then GoTo CleanExit
-    
-    For Each ws In wb.Worksheets
-        
-        If InStr(1, ws.Name, "curve", vbTextCompare) = 0 Then
-        
-            lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
-            newCol = lastCol + 1
-            
-            ws.Columns(lastCol).Copy
-            ws.Columns(newCol).PasteSpecial xlPasteAll
-            
-            ws.Cells(1, newCol).Value = todayDate
-            
-            lastRow = ws.Cells(ws.Rows.Count, newCol).End(xlUp).Row
-            
-            For r = 2 To lastRow
-            
-                Set cell = ws.Cells(r, newCol)
-                
-                If Not cell.HasFormula Then
-                    If cell.Font.Color <> vbRed Then
-                        If cell.Interior.Color = xlNone _
-                        Or cell.Interior.Color = RGB(255, 255, 255) _
-                        Or cell.Interior.Color = clrE2EFDA Then
-                        
-                            cell.ClearContents
-                        
-                        End If
-                    End If
-                End If
-                
-            Next r
-            
-        End If
-        
     Next ws
-    
-    wb.Save
-    wb.Close False
+End Function
 
-CleanExit:
-
-    Application.CutCopyMode = False
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-
-End Sub

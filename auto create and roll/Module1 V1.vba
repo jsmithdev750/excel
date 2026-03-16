@@ -1,7 +1,9 @@
 Option Explicit
+Public OldCurveCompleted As Boolean
 
 Public Sub Old_Japan_Fizz_Curve()
     On Error GoTo ErrorHandler
+    
     
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
@@ -81,8 +83,11 @@ Public Sub Old_Japan_Fizz_Curve()
     Call ProcessCurveData(wbDestOld, wsCurveDestOld, fDestMTD, numRows, todayDate)
     
     wbDestOld.Save
+    'save and close to speed up the process time
+    wbDestOld.Close SaveChanges:=False
     MsgBox "SUCCESS! Old Japan Fizz Curve pasted.", vbInformation
     GoTo SafeExit
+    
 
 ErrorHandler:
     MsgBox "ERROR " & Err.Number & ": " & Err.Description, vbCritical
@@ -92,6 +97,7 @@ SafeExit:
     Application.ScreenUpdating = True
     Application.Calculation = xlCalculationAutomatic
     Application.EnableEvents = True
+    
 End Sub
 '============================================================
 ' *** FIXED: ProcessCurveData with error handling ***

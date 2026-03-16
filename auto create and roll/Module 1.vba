@@ -175,7 +175,6 @@ NextRegion:     Next region
 ProcError:
     Debug.Print "ERROR: " & Err.Description
 End Sub
-
 ' *** NEW: Find contract row in Column A ***
 Private Function FindContractRow(ws As Worksheet, contractName As String) As Long
     Dim lastRow As Long, i As Long
@@ -191,29 +190,12 @@ Private Function FindContractRow(ws As Worksheet, contractName As String) As Lon
     Next i
     FindContractRow = 0  ' Not found
 End Function
-
-'============================================================
-' *** NEW HELPER FUNCTIONS ***
-'============================================================
-Private Function FindWorkbook(pattern As String) As Workbook
-    Dim wb As Workbook
-    For Each wb In Workbooks
-        If wb.Name Like pattern Then
-            Set FindWorkbook = wb
-            Debug.Print "Found: " & wb.Name
-            Exit Function
-        End If
-    Next wb
-    MsgBox "Workbook not found: " & pattern, vbCritical
-End Function
-
 Private Function GetCellValueSafe(ws As Worksheet, cellAddr As String, defaultVal As String) As String
     On Error Resume Next
     GetCellValueSafe = CStr(ws.Range(cellAddr).value)
     If Err.Number <> 0 Then GetCellValueSafe = defaultVal
     On Error GoTo 0
 End Function
-
 Private Sub PasteIfSafe(targetCell As Range, value As Variant)
     If Not targetCell.HasFormula And _
        targetCell.Font.Color <> vbRed And _
@@ -222,7 +204,6 @@ Private Sub PasteIfSafe(targetCell As Range, value As Variant)
         targetCell.value = value
     End If
 End Sub
-
 ' *** FIXED: Flexible date column search ***
 Private Function FindDateColumnFlexible(ws As Worksheet, dateText As String) As Long
     Dim c As Range
@@ -236,7 +217,6 @@ Private Function FindDateColumnFlexible(ws As Worksheet, dateText As String) As 
     Set c = ws.Rows(1).Find(dateText, LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
     If Not c Is Nothing Then FindDateColumnFlexible = c.Column
 End Function
-
 ' Keep existing helper functions...
 Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) As Worksheet
     Dim ws As Worksheet
@@ -247,7 +227,6 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
-
 Public Function FindRegionCellAnywhere(ws As Worksheet, regionName As String) As Range
     Dim cell As Range, checkCell As Range, cellValue As String
     For Each cell In ws.UsedRange
@@ -269,6 +248,17 @@ Public Function FindRegionCellAnywhere(ws As Worksheet, regionName As String) As
     Next
     Set FindRegionCellAnywhere = Nothing
 End Function
-
-
-
+'============================================================
+' *** NEW HELPER FUNCTIONS ***
+'============================================================
+Private Function FindWorkbook(pattern As String) As Workbook
+    Dim wb As Workbook
+    For Each wb In Workbooks
+        If wb.Name Like pattern Then
+            Set FindWorkbook = wb
+            Debug.Print "Found: " & wb.Name
+            Exit Function
+        End If
+    Next wb
+    MsgBox "Workbook not found: " & pattern, vbCritical
+End Function

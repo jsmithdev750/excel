@@ -80,6 +80,18 @@ Public Sub Import_Old_Japan_Power_Curve()
     End If
 
     '--------------------------------
+    ' Clear old charts/pictures in destination
+    '--------------------------------
+    Dim i As Long
+    For i = wsDest.ChartObjects.Count To 1 Step -1
+        wsDest.ChartObjects(i).Delete
+    Next i
+
+    For i = wsDest.Shapes.Count To 1 Step -1
+        If wsDest.Shapes(i).Type = msoPicture Then wsDest.Shapes(i).Delete
+    Next i
+
+    '--------------------------------
     ' Find TOKYO AREA in origin and destination (dynamic)
     '--------------------------------
     Set tokyoCell = wsOrigin.Cells.Find(Sheet1.Range("A7").Value, LookAt:=xlPart)
@@ -125,6 +137,10 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Process each region
     '--------------------------------
+    Dim ch As ChartObject
+    Dim chartLeft As Double, chartTop As Double
+    Dim wk1Top As Double, wk2Top As Double
+    
     For Each regionCell In regionCols
 
         regionStartCol = regionCell.mergeArea.Column
@@ -134,9 +150,7 @@ Public Sub Import_Old_Japan_Power_Curve()
         wk2Row = wk1Row + 7
         wk3Row = wk2Row + 7
 
-        '--------------------------------
         ' WEEK CONTRACTS
-        '--------------------------------
         rowOffset = wk1Row - headerRow
         colOffset = regionStartCol - startCol
         CopyRowFast wsOrigin, wsDest, wk1Row, regionStartCol, regionEndCol, destHeaderRow + rowOffset, destStartCol + colOffset
@@ -145,9 +159,7 @@ Public Sub Import_Old_Japan_Power_Curve()
         rowOffset = wk3Row - headerRow
         CopyRowFast wsOrigin, wsDest, wk3Row, regionStartCol, regionEndCol, destHeaderRow + rowOffset, destStartCol + colOffset
 
-        '--------------------------------
         ' DAY CONTRACTS (AREA logic) + red font check
-        '--------------------------------
         If InStr(1, regionCell.Value, "AREA", vbTextCompare) > 0 Then
 
             Dim col1 As Long, col2 As Long, col3 As Long
@@ -170,64 +182,55 @@ Public Sub Import_Old_Japan_Power_Curve()
                          wsDest.Cells(destRowStart + (lastRow - wk1Row), destColStart + (col3 - col1))).Value = _
                 wsOrigin.Range(wsOrigin.Cells(wk1Row, col1), wsOrigin.Cells(lastRow, col3)).Value
 
-            ' Red font only on last col if date condition met
+            ' Red font only on last col if date condition met, else reset to black
             For r = 0 To wk3Row - wk1Row
                 If IsDate(wsDest.Cells(destRowStart + r, destColStart + 1).Value) Then
                     contractDate = wsDest.Cells(destRowStart + r, destColStart + 1).Value
                     If contractDate <= destDate Or contractDate = destDate + 1 Then
                         wsDest.Cells(destRowStart + r, destColStart + 2).Font.Color = RGB(255, 0, 0)
+                    Else
+                        wsDest.Cells(destRowStart + r, destColStart + 2).Font.Color = RGB(0, 0, 0)
                     End If
+                Else
+                    wsDest.Cells(destRowStart + r, destColStart + 2).Font.Color = RGB(0, 0, 0)
                 End If
             Next r
 
+            ' Copy charts from origin to destination for AREA region
+            wk1Top = wsDest.Rows(destHeaderRow + (wk1Row - headerRow)).Top
+            wk2Top = wsDest.Rows(destHeaderRow + (wk2Row - headerRow)).Top
+
+            For Each ch In wsOrigin.ChartObjects
+                If ch.Left >= wsOrigin.Cells(headerRow, regionStartCol).Left And _
+                   ch.Left + ch.Width <= wsOrigin.Cells(headerRow, regionEndCol).Left + wsOrigin.Cells(headerRow, regionEndCol).Width Then
+
+                    ' Determine horizontal position
+                    chartLeft = wsDest.Cells(destHeaderRow, destStartCol + (regionStartCol - startCol)).Left
+
+                    ' Determine vertical position
+                    If ch.Top < wsOrigin.Rows(wk2Row).Top Then
+                        chartTop = wk1Top + wsDest.Rows(destHeaderRow + (wk1Row - headerRow)).Height
+                    Else
+                        chartTop = wk2Top + wsDest.Rows(destHeaderRow + (wk2Row - headerRow)).Height
+                    End If
+
+                    ' Copy chart as picture and paste
+                    ch.CopyPicture Appearance:=xlScreen, Format:=xlPicture
+                    wsDest.Paste
+
+                    ' Move pasted image
+                    With wsDest.Shapes(wsDest.Shapes.Count)
+                        .Left = chartLeft
+                        .Top = chartTop
+                        .LockAspectRatio = msoTrue
+                    End With
+
+                End If
+            Next ch
+
         End If
-        
-    '--------------------------------
-    ' Copy charts for AREA regions
-    '--------------------------------
-Dim ch As ChartObject
-Dim chartLeft As Double, chartTop As Double
-Dim wk1Top As Double, wk2Top As Double
 
-' Get the top positions of the first and second week rows in destination
-wk1Top = wsDest.Rows(destHeaderRow + (wk1Row - headerRow)).Top
-wk2Top = wsDest.Rows(destHeaderRow + (wk2Row - headerRow)).Top
-
-For Each ch In wsOrigin.ChartObjects
-    ' Check if chart overlaps the AREA region columns
-    If ch.Left >= wsOrigin.Cells(headerRow, regionStartCol).Left And _
-       ch.Left + ch.Width <= wsOrigin.Cells(headerRow, regionEndCol).Left + wsOrigin.Cells(headerRow, regionEndCol).Width Then
-
-        ' Determine horizontal position in destination
-        chartLeft = wsDest.Cells(destHeaderRow, destStartCol + (regionStartCol - startCol)).Left
-
-        ' Determine vertical position based on chart location in origin
-        If ch.Top < wsOrigin.Rows(wk2Row).Top Then
-            ' Chart below first week
-            chartTop = wk1Top + wsDest.Rows(destHeaderRow + (wk1Row - headerRow)).Height
-        Else
-            ' Chart below second week
-            chartTop = wk2Top + wsDest.Rows(destHeaderRow + (wk2Row - headerRow)).Height
-        End If
-
-        ' Copy chart as picture
-        ch.CopyPicture Appearance:=xlScreen, Format:=xlPicture
-
-        ' Paste in destination
-        wsDest.Paste
-
-        ' Move pasted image
-        With wsDest.Shapes(wsDest.Shapes.Count)
-            .Left = chartLeft
-            .Top = chartTop
-            .LockAspectRatio = msoTrue
-        End With
-    End If
-Next ch
-
-        '--------------------------------
         ' REMAINING CONTRACTS
-        '--------------------------------
         lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, regionStartCol).End(xlUp).Row
         If lastRow > wk3Row Then
             rowOffset = wk3Row + 1 - headerRow
@@ -238,7 +241,7 @@ Next ch
         End If
 
     Next regionCell
-    
+
     wbDest.Save
     MsgBox "Import completed"
 

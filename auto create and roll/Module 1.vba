@@ -1,34 +1,33 @@
 Option Explicit
 
-'============================================================
-' Macro: Import Old Japan Fizz Curve (robust MTD + West Region search)
-'============================================================
 Public Sub Old_Japan_Fizz_Curve()
-
-    Dim wbOriginOld As Workbook
-    Dim wbDestOld As Workbook
-    Dim wsCurveOld As Worksheet
-    Dim wsCurveDestOld As Worksheet
-
-    Dim originPatternOld As String
-    Dim destPatternOld As String
-    Dim todayYYMMDDOld As String
-    Dim todayDDMMYY As String
+    On Error GoTo ErrorHandler
     
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+    Application.EnableEvents = False
+
+    Dim wbOriginOld As Workbook, wbDestOld As Workbook
+    Dim wsCurveOld As Worksheet, wsCurveDestOld As Worksheet
+    Dim originPatternOld As String, destPatternOld As String
+    Dim todayYYMMDDOld As String, todayDate As Date  ' *** FIXED: Proper Date type ***
     Dim wbOld As Workbook
-    Dim fMTD As Range, fDestMTD As Range
-    Dim fWest As Range
-    Dim startRowOld As Long, lastRowOld As Long
-    Dim startColOld As Long, endColOld As Long
-    Dim rngCopyOld As Range
-    Dim numRows As Long, numCols As Long
-    Dim r As Long
+    Dim fMTD As Range, fDestMTD As Range, fWest As Range
+    Dim startRowOld As Long, lastRowOld As Long, startColOld As Long, endColOld As Long
+    Dim rngCopyOld As Range, numRows As Long, numCols As Long
     
     '--------------------------------------------------------
-    ' Date
+    ' SAFE Date handling - *** FIXED ***
     '--------------------------------------------------------
-    todayDDMMYY = Sheet1.Range("A3").Value
-    todayYYMMDDOld = Format(todayDDMMYY, "yy.mm.dd")
+    Dim activeWs As Worksheet
+    Set activeWs = ActiveSheet  ' Use ActiveSheet instead of hardcoded Sheet1
+    If activeWs.Range("A3").value = "" Then
+        MsgBox "A3 date is empty!", vbCritical
+        GoTo SafeExit
+    End If
+    todayDate = CDate(activeWs.Range("A3").value)
+    todayYYMMDDOld = Format(todayDate, "yy.mm.dd")
+    Debug.Print "Today date: " & todayDate & " | Format: " & todayYYMMDDOld
     
     '--------------------------------------------------------
     ' Workbook patterns
@@ -36,127 +35,209 @@ Public Sub Old_Japan_Fizz_Curve()
     originPatternOld = "*FIZZ CURVE SHEET - MASTER v1*"
     destPatternOld = "*Vanir Japan Power Curve_PHYSICAL_" & todayYYMMDDOld & "*.xls*"
     
-    '--------------------------------------------------------
-    ' Find origin workbook
-    '--------------------------------------------------------
-    For Each wbOld In Workbooks
-        If wbOld.Name Like originPatternOld Then
-            Set wbOriginOld = wbOld
-            Exit For
-        End If
-    Next wbOld
-    If wbOriginOld Is Nothing Then
-        MsgBox "Origin workbook not open", vbCritical
-        Exit Sub
-    End If
+    ' Find workbooks...
+    Set wbOriginOld = FindWorkbook(originPatternOld)
+    If wbOriginOld Is Nothing Then GoTo SafeExit
     
-    '--------------------------------------------------------
-    ' Find destination workbook
-    '--------------------------------------------------------
-    For Each wbOld In Workbooks
-        If wbOld.Name Like destPatternOld Then
-            Set wbDestOld = wbOld
-            Exit For
-        End If
-    Next wbOld
-    If wbDestOld Is Nothing Then
-        MsgBox "Destination workbook not open", vbCritical
-        Exit Sub
-    End If
+    Set wbDestOld = FindWorkbook(destPatternOld)
+    If wbDestOld Is Nothing Then GoTo SafeExit
     
-    '--------------------------------------------------------
-    ' Resolve sheets
-    '--------------------------------------------------------
+    ' Find sheets...
     Set wsCurveOld = GetSheetByNameInsensitive(wbOriginOld, "Base_Peak_Combined")
     Set wsCurveDestOld = GetSheetByNameInsensitive(wbDestOld, "Curve")
-    If wsCurveOld Is Nothing Or wsCurveDestOld Is Nothing Then
-        MsgBox "Required sheet missing", vbCritical
-        Exit Sub
-    End If
+    If wsCurveOld Is Nothing Or wsCurveDestOld Is Nothing Then GoTo SafeExit
     
-    '--------------------------------------------------------
-    ' Find Base/Peak in origin sheet
-    '--------------------------------------------------------
-    Set fMTD = wsCurveOld.Cells.Find(What:="BASE/PEAK", LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
-    If fMTD Is Nothing Then
-        MsgBox "'BASE/PEAK' not found in origin sheet", vbCritical
-        Exit Sub
-    End If
+    ' Find ranges...
+    Set fMTD = wsCurveOld.Cells.Find("BASE/PEAK", LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
+    If fMTD Is Nothing Then GoTo SafeExit
+    
     startRowOld = fMTD.Row + 1
     startColOld = fMTD.Column
+    lastRowOld = wsCurveOld.Cells(wsCurveOld.Rows.Count, startColOld).End(xlUp).Row
+    If lastRowOld < startRowOld Then lastRowOld = startRowOld
     
-    '--------------------------------------------------------
-    ' Find last non-empty row below MTD
-    '--------------------------------------------------------
-    lastRowOld = startRowOld
-    For r = startRowOld To wsCurveOld.Rows.Count
-        If Application.WorksheetFunction.CountA(wsCurveOld.Rows(r)) = 0 Then Exit For
-        lastRowOld = r
-    Next r
+    ' *** FIXED: Safe A10 access ***
+    Dim westRegionText As String
+    westRegionText = GetCellValueSafe(activeWs, "A10", "West Region")
     
-    '--------------------------------------------------------
-    ' Find West Region anywhere in origin sheet
-    '--------------------------------------------------------
-    Set fWest = wsCurveOld.Cells.Find(What:=Sheet1.Range("A10").Value, LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
-    If fWest Is Nothing Then
-        MsgBox "'West Region' not found in origin sheet", vbCritical
-        Exit Sub
-    End If
+    Set fWest = wsCurveOld.Cells.Find(westRegionText, LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
+    If fWest Is Nothing Then GoTo SafeExit
     
-    ' Get last column of West Region (merged aware)
-    If fWest.MergeCells Then
-        endColOld = fWest.mergeArea.Columns(fWest.mergeArea.Columns.Count).Column
-    Else
-        endColOld = fWest.Column
-    End If
+    ' Column calculation
+    endColOld = IIf(fWest.MergeCells, fWest.mergeArea.Column + fWest.mergeArea.Columns.Count - 1, fWest.Column)
     
-    '--------------------------------------------------------
-    ' Compute rows and columns to copy
-    '--------------------------------------------------------
+    ' Copy data
     numRows = lastRowOld - startRowOld + 1
     numCols = endColOld - startColOld + 1
+    Set rngCopyOld = wsCurveOld.Range(wsCurveOld.Cells(startRowOld, startColOld), wsCurveOld.Cells(lastRowOld, endColOld))
     
-    If numRows <= 0 Or numCols <= 0 Then
-        MsgBox "Invalid copy size. Check BASE/PEAK and West Region positions.", vbCritical
-        Exit Sub
-    End If
+    Set fDestMTD = wsCurveDestOld.Cells.Find("MtD", LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
+    If fDestMTD Is Nothing Then GoTo SafeExit
     
-    '--------------------------------------------------------
-    ' Set copy range in origin
-    '--------------------------------------------------------
-    Set rngCopyOld = wsCurveOld.Range(wsCurveOld.Cells(startRowOld, startColOld), _
-                                      wsCurveOld.Cells(lastRowOld, endColOld))
+    ' PASTE - *** FIXED paste range ***
+    wsCurveDestOld.Range(fDestMTD, fDestMTD.Offset(numRows - 1, numCols - 1)).value = rngCopyOld.value
     
-    '--------------------------------------------------------
-    ' Find MTD in destination sheet
-    '--------------------------------------------------------
-    Set fDestMTD = wsCurveDestOld.Cells.Find(What:="MtD", LookAt:=xlPart, LookIn:=xlValues, MatchCase:=False)
-    If fDestMTD Is Nothing Then
-        MsgBox "'MTD' not found in destination sheet", vbCritical
-        Exit Sub
-    End If
-    
-    '--------------------------------------------------------
-    ' Set destination range same size as copy range
-    '--------------------------------------------------------
-    Dim destRange As Range
-    Set destRange = wsCurveDestOld.Range(fDestMTD, _
-                                         wsCurveDestOld.Cells(fDestMTD.Row + numRows - 2, _
-                                                              fDestMTD.Column + numCols - 1))
-    
-    '--------------------------------------------------------
-    ' Paste values
-    '--------------------------------------------------------
-    destRange.Value = rngCopyOld.Value
+    ' Process region sheets
+    Call ProcessCurveData(wbDestOld, wsCurveDestOld, fDestMTD, numRows, todayDate)
     
     wbDestOld.Save
-    MsgBox "Old Japan Fizz Curve pasted successfully", vbInformation
+    MsgBox "SUCCESS! Old Japan Fizz Curve pasted.", vbInformation
+    GoTo SafeExit
 
+ErrorHandler:
+    MsgBox "ERROR " & Err.Number & ": " & Err.Description, vbCritical
+    Debug.Print "ERROR: " & Err.Description & " at " & Now
+
+SafeExit:
+    Application.ScreenUpdating = True
+    Application.Calculation = xlCalculationAutomatic
+    Application.EnableEvents = True
+End Sub
+'============================================================
+' *** FIXED: ProcessCurveData with error handling ***
+'============================================================
+Private Sub ProcessCurveData(wbDest As Workbook, wsCurveDest As Worksheet, fDestMTD As Range, numRows As Long, todayDate As Date)
+    On Error GoTo ProcError
+    
+    Dim regions As Variant: regions = Array("Tokyo", "Chubu", "Kansai", "Hokkaido", "Tohoku", "Hokuriku", "Chugoku", "Shikoku", "Kyushu")
+    Dim regionColDict As Object: Set regionColDict = CreateObject("Scripting.Dictionary")
+    
+    Dim region As Variant, regionCell As Range
+    Dim todayDateFormat As String: todayDateFormat = Format(todayDate, "dd-mmm-yy")
+    
+    ' *** STEP 1: Build region column dictionary ***
+    For Each region In regions
+        Set regionCell = FindRegionCellAnywhere(wsCurveDest, CStr(region))
+        If Not regionCell Is Nothing Then
+            regionColDict(CStr(region)) = regionCell.Column
+            Debug.Print "Region " & region & " at column " & regionCell.Column
+        End If
+    Next region
+    
+    ' *** STEP 2: Process EACH region individually ***
+    Dim wsBase As Worksheet, wsPeak As Worksheet
+    Dim dateColBase As Long, dateColPeak As Long
+    Dim contractName As String, curveBaseVal As Variant, curvePeakVal As Variant
+    Dim baseRow As Long, peakRow As Long, r As Long
+    
+    For Each region In regions
+        If Not regionColDict.Exists(CStr(region)) Then GoTo NextRegion
+        
+        ' Get sheets
+        On Error Resume Next
+        Set wsBase = wbDest.Worksheets(CStr(region) & " Base")
+        Set wsPeak = wbDest.Worksheets(CStr(region) & " Peak")
+        On Error GoTo ProcError
+        
+        If wsBase Is Nothing Or wsPeak Is Nothing Then
+            Debug.Print "Skipping " & region & " - sheets missing"
+            GoTo NextRegion
+        End If
+        
+        ' Find date columns
+        dateColBase = FindDateColumnFlexible(wsBase, todayDateFormat)
+        dateColPeak = FindDateColumnFlexible(wsPeak, todayDateFormat)
+        If dateColBase = 0 Or dateColPeak = 0 Then GoTo NextRegion
+        
+        Debug.Print region & " | Date cols: Base=" & dateColBase & ", Peak=" & dateColPeak
+        
+        ' *** STEP 3: For EACH Curve row, find matching contract IN BOTH sheets ***
+        For r = fDestMTD.Row + 1 To fDestMTD.Row + numRows - 1
+            contractName = Trim(CStr(wsCurveDest.Cells(r, fDestMTD.Column).value))
+            If Len(contractName) = 0 Then GoTo NextContract
+            
+            ' Get values from Curve sheet
+            Dim regionCol As Long: regionCol = regionColDict(CStr(region))
+            curveBaseVal = wsCurveDest.Cells(r, regionCol).value
+            curvePeakVal = wsCurveDest.Cells(r, regionCol + 1).value
+            
+            ' *** FIND CONTRACT IN BASE SHEET ***
+            baseRow = FindContractRow(wsBase, contractName)
+            If baseRow > 0 Then
+                Debug.Print "  " & region & " Base: " & contractName & " @ row " & baseRow & " = " & curveBaseVal
+                PasteIfSafe wsBase.Cells(baseRow, dateColBase), curveBaseVal
+            End If
+            
+            ' *** FIND CONTRACT IN PEAK SHEET (SEPARATE SEARCH!) ***
+            peakRow = FindContractRow(wsPeak, contractName)
+            If peakRow > 0 Then
+                Debug.Print "  " & region & " Peak: " & contractName & " @ row " & peakRow & " = " & curvePeakVal
+                PasteIfSafe wsPeak.Cells(peakRow, dateColPeak), curvePeakVal
+            End If
+            
+NextContract:       Next r
+        
+NextRegion:     Next region
+        
+    Debug.Print "? ALL regions processed!"
+    Exit Sub
+    
+ProcError:
+    Debug.Print "ERROR: " & Err.Description
 End Sub
 
+' *** NEW: Find contract row in Column A ***
+Private Function FindContractRow(ws As Worksheet, contractName As String) As Long
+    Dim lastRow As Long, i As Long
+    Dim cellValue As String
+    
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    For i = 2 To lastRow  ' Start from row 2
+        cellValue = Trim(CStr(ws.Cells(i, 1).value))
+        If StrComp(cellValue, contractName, vbTextCompare) = 0 Then
+            FindContractRow = i
+            Exit Function
+        End If
+    Next i
+    FindContractRow = 0  ' Not found
+End Function
+
 '============================================================
-' Helper: Get Sheet by Name (Case-Insensitive)
+' *** NEW HELPER FUNCTIONS ***
 '============================================================
+Private Function FindWorkbook(pattern As String) As Workbook
+    Dim wb As Workbook
+    For Each wb In Workbooks
+        If wb.Name Like pattern Then
+            Set FindWorkbook = wb
+            Debug.Print "Found: " & wb.Name
+            Exit Function
+        End If
+    Next wb
+    MsgBox "Workbook not found: " & pattern, vbCritical
+End Function
+
+Private Function GetCellValueSafe(ws As Worksheet, cellAddr As String, defaultVal As String) As String
+    On Error Resume Next
+    GetCellValueSafe = CStr(ws.Range(cellAddr).value)
+    If Err.Number <> 0 Then GetCellValueSafe = defaultVal
+    On Error GoTo 0
+End Function
+
+Private Sub PasteIfSafe(targetCell As Range, value As Variant)
+    If Not targetCell.HasFormula And _
+       targetCell.Font.Color <> vbRed And _
+       targetCell.Interior.Color <> RGB(255, 242, 204) And _
+       Not targetCell.EntireRow.Hidden Then
+        targetCell.value = value
+    End If
+End Sub
+
+' *** FIXED: Flexible date column search ***
+Private Function FindDateColumnFlexible(ws As Worksheet, dateText As String) As Long
+    Dim c As Range
+    ' Try exact match first
+    Set c = ws.Rows(1).Find(dateText, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False)
+    If Not c Is Nothing Then
+        FindDateColumnFlexible = c.Column
+        Exit Function
+    End If
+    ' Try partial match
+    Set c = ws.Rows(1).Find(dateText, LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+    If Not c Is Nothing Then FindDateColumnFlexible = c.Column
+End Function
+
+' Keep existing helper functions...
 Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) As Worksheet
     Dim ws As Worksheet
     For Each ws In wb.Worksheets
@@ -166,4 +247,28 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
+
+Public Function FindRegionCellAnywhere(ws As Worksheet, regionName As String) As Range
+    Dim cell As Range, checkCell As Range, cellValue As String
+    For Each cell In ws.UsedRange
+        If cell.MergeCells Then
+            For Each checkCell In cell.mergeArea.Cells
+                cellValue = Trim(CStr(checkCell.value))
+                If StrComp(cellValue, regionName, vbTextCompare) = 0 Then
+                    Set FindRegionCellAnywhere = cell.mergeArea.Cells(1, 1)
+                    Exit Function
+                End If
+            Next
+        Else
+            cellValue = Trim(CStr(cell.value))
+            If StrComp(cellValue, regionName, vbTextCompare) = 0 Then
+                Set FindRegionCellAnywhere = cell
+                Exit Function
+            End If
+        End If
+    Next
+    Set FindRegionCellAnywhere = Nothing
+End Function
+
+
 

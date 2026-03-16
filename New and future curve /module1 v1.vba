@@ -181,6 +181,49 @@ Public Sub Import_Old_Japan_Power_Curve()
             Next r
 
         End If
+        
+    '--------------------------------
+    ' Copy charts for AREA regions
+    '--------------------------------
+Dim ch As ChartObject
+Dim chartLeft As Double, chartTop As Double
+Dim wk1Top As Double, wk2Top As Double
+
+' Get the top positions of the first and second week rows in destination
+wk1Top = wsDest.Rows(destHeaderRow + (wk1Row - headerRow)).Top
+wk2Top = wsDest.Rows(destHeaderRow + (wk2Row - headerRow)).Top
+
+For Each ch In wsOrigin.ChartObjects
+    ' Check if chart overlaps the AREA region columns
+    If ch.Left >= wsOrigin.Cells(headerRow, regionStartCol).Left And _
+       ch.Left + ch.Width <= wsOrigin.Cells(headerRow, regionEndCol).Left + wsOrigin.Cells(headerRow, regionEndCol).Width Then
+
+        ' Determine horizontal position in destination
+        chartLeft = wsDest.Cells(destHeaderRow, destStartCol + (regionStartCol - startCol)).Left
+
+        ' Determine vertical position based on chart location in origin
+        If ch.Top < wsOrigin.Rows(wk2Row).Top Then
+            ' Chart below first week
+            chartTop = wk1Top + wsDest.Rows(destHeaderRow + (wk1Row - headerRow)).Height
+        Else
+            ' Chart below second week
+            chartTop = wk2Top + wsDest.Rows(destHeaderRow + (wk2Row - headerRow)).Height
+        End If
+
+        ' Copy chart as picture
+        ch.CopyPicture Appearance:=xlScreen, Format:=xlPicture
+
+        ' Paste in destination
+        wsDest.Paste
+
+        ' Move pasted image
+        With wsDest.Shapes(wsDest.Shapes.Count)
+            .Left = chartLeft
+            .Top = chartTop
+            .LockAspectRatio = msoTrue
+        End With
+    End If
+Next ch
 
         '--------------------------------
         ' REMAINING CONTRACTS

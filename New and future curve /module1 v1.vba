@@ -1,6 +1,6 @@
 Option Explicit
 '============================================================
-' Main Import Macro
+' Main Import Macro (with dynamic destination offsets)
 '============================================================
 Public Sub Import_Old_Japan_Power_Curve()
 
@@ -18,6 +18,10 @@ Public Sub Import_Old_Japan_Power_Curve()
     Dim todayYYMMDD As String
     Dim destPattern As String
     Dim wb As Workbook
+    
+    Dim destTokyoCell As Range
+    Dim destHeaderRow As Long, destStartCol As Long
+    Dim rowOffset As Long, colOffset As Long
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
@@ -76,35 +80,38 @@ Public Sub Import_Old_Japan_Power_Curve()
     End If
 
     '--------------------------------
-    ' Find TOKYO AREA
+    ' Find TOKYO AREA in origin and destination (dynamic)
     '--------------------------------
     Set tokyoCell = wsOrigin.Cells.Find(Sheet1.Range("A7").Value, LookAt:=xlPart)
-
     If tokyoCell Is Nothing Then
-        MsgBox "Tokyo Area header not found", vbCritical
+        MsgBox "Tokyo Area header not found in origin sheet", vbCritical
         GoTo ExitSafe
     End If
-
     headerRow = tokyoCell.Row
     startCol = tokyoCell.mergeArea.Column
+
+    Set destTokyoCell = wsDest.Cells.Find(Sheet1.Range("A7").Value, LookAt:=xlPart)
+    If destTokyoCell Is Nothing Then
+        MsgBox "Tokyo Area header not found in destination sheet", vbCritical
+        GoTo ExitSafe
+    End If
+    destHeaderRow = destTokyoCell.Row
+    destStartCol = destTokyoCell.mergeArea.Column
 
     '--------------------------------
     ' Find SPREADS
     '--------------------------------
     Set spreadsCell = wsOrigin.Cells.Find(Sheet1.Range("B7").Value, LookAt:=xlPart)
-
     If spreadsCell Is Nothing Then
         MsgBox "Spreads header not found", vbCritical
         GoTo ExitSafe
     End If
-
     endCol = spreadsCell.mergeArea.Columns(spreadsCell.mergeArea.Columns.Count).Column
 
     '--------------------------------
     ' Collect region headers
     '--------------------------------
     Set regionCols = New Collection
-
     c = startCol
     Do While c <= endCol
         If wsOrigin.Cells(headerRow, c).MergeCells Then
@@ -130,9 +137,13 @@ Public Sub Import_Old_Japan_Power_Curve()
         '--------------------------------
         ' WEEK CONTRACTS
         '--------------------------------
-        CopyRowFast wsOrigin, wsDest, wk1Row, regionStartCol, regionEndCol
-        CopyRowFast wsOrigin, wsDest, wk2Row, regionStartCol, regionEndCol
-        CopyRowFast wsOrigin, wsDest, wk3Row, regionStartCol, regionEndCol
+        rowOffset = wk1Row - headerRow
+        colOffset = regionStartCol - startCol
+        CopyRowFast wsOrigin, wsDest, wk1Row, regionStartCol, regionEndCol, destHeaderRow + rowOffset, destStartCol + colOffset
+        rowOffset = wk2Row - headerRow
+        CopyRowFast wsOrigin, wsDest, wk2Row, regionStartCol, regionEndCol, destHeaderRow + rowOffset, destStartCol + colOffset
+        rowOffset = wk3Row - headerRow
+        CopyRowFast wsOrigin, wsDest, wk3Row, regionStartCol, regionEndCol, destHeaderRow + rowOffset, destStartCol + colOffset
 
         '--------------------------------
         ' DAY CONTRACTS (AREA logic) + red font check
@@ -142,25 +153,29 @@ Public Sub Import_Old_Japan_Power_Curve()
             Dim col1 As Long, col2 As Long, col3 As Long
             Dim contractDate As Date
             Dim destDate As Date
+            Dim destRowStart As Long, destColStart As Long
             
             col1 = regionEndCol - 2
             col2 = regionEndCol - 1
             col3 = regionEndCol
-            
             destDate = Sheet1.Range("A3").Value
 
             lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, col1).End(xlUp).Row
 
-            ' Bulk copy
-            wsDest.Range(wsDest.Cells(wk1Row, col1), wsDest.Cells(lastRow, col3)).Value = _
-            wsOrigin.Range(wsOrigin.Cells(wk1Row, col1), wsOrigin.Cells(lastRow, col3)).Value
-            
-            ' Red font only on last col if date condition met (first wk contracts)
-            For r = wk1Row To wk3Row
-                If IsDate(wsDest.Cells(r, col2).Value) Then
-                    contractDate = wsDest.Cells(r, col2).Value
+            ' Dynamic paste destination
+            destRowStart = destHeaderRow + (wk1Row - headerRow)
+            destColStart = destStartCol + (col1 - startCol)
+
+            wsDest.Range(wsDest.Cells(destRowStart, destColStart), _
+                         wsDest.Cells(destRowStart + (lastRow - wk1Row), destColStart + (col3 - col1))).Value = _
+                wsOrigin.Range(wsOrigin.Cells(wk1Row, col1), wsOrigin.Cells(lastRow, col3)).Value
+
+            ' Red font only on last col if date condition met
+            For r = 0 To wk3Row - wk1Row
+                If IsDate(wsDest.Cells(destRowStart + r, destColStart + 1).Value) Then
+                    contractDate = wsDest.Cells(destRowStart + r, destColStart + 1).Value
                     If contractDate <= destDate Or contractDate = destDate + 1 Then
-                        wsDest.Cells(r, col3).Font.Color = RGB(255, 0, 0)
+                        wsDest.Cells(destRowStart + r, destColStart + 2).Font.Color = RGB(255, 0, 0)
                     End If
                 End If
             Next r
@@ -171,12 +186,12 @@ Public Sub Import_Old_Japan_Power_Curve()
         ' REMAINING CONTRACTS
         '--------------------------------
         lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, regionStartCol).End(xlUp).Row
-
         If lastRow > wk3Row Then
-            wsDest.Range(wsDest.Cells(wk3Row + 1, regionStartCol), _
-                         wsDest.Cells(lastRow, regionEndCol)).Value = _
-            wsOrigin.Range(wsOrigin.Cells(wk3Row + 1, regionStartCol), _
-                           wsOrigin.Cells(lastRow, regionEndCol)).Value
+            rowOffset = wk3Row + 1 - headerRow
+            colOffset = regionStartCol - startCol
+            wsDest.Range(wsDest.Cells(destHeaderRow + rowOffset, destStartCol + colOffset), _
+                         wsDest.Cells(destHeaderRow + rowOffset + (lastRow - wk3Row - 1), destStartCol + colOffset + (regionEndCol - regionStartCol))).Value = _
+                wsOrigin.Range(wsOrigin.Cells(wk3Row + 1, regionStartCol), wsOrigin.Cells(lastRow, regionEndCol)).Value
         End If
 
     Next regionCell
@@ -195,9 +210,15 @@ End Sub
 ' Fast row copy (no cell loops)
 '--------------------------------
 Private Sub CopyRowFast(wsSrc As Worksheet, wsDst As Worksheet, _
-                        rowNum As Long, startCol As Long, endCol As Long)
-    wsDst.Range(wsDst.Cells(rowNum, startCol), wsDst.Cells(rowNum, endCol)).Value = _
-    wsSrc.Range(wsSrc.Cells(rowNum, startCol), wsSrc.Cells(rowNum, endCol)).Value
+                        srcRow As Long, srcStartCol As Long, srcEndCol As Long, _
+                        Optional dstRow As Long = 0, Optional dstCol As Long = 0)
+
+    If dstRow = 0 Then dstRow = srcRow
+    If dstCol = 0 Then dstCol = srcStartCol
+
+    wsDst.Range(wsDst.Cells(dstRow, dstCol), wsDst.Cells(dstRow, dstCol + srcEndCol - srcStartCol)).Value = _
+        wsSrc.Range(wsSrc.Cells(srcRow, srcStartCol), wsSrc.Cells(srcRow, srcEndCol)).Value
+
 End Sub
 
 '============================================================

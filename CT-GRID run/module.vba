@@ -29,37 +29,45 @@ Public Sub MapContractSeasons()
     Dim contract As String
     Dim legs() As String
     Dim j As Long
-    Dim transformedLeg As String
-    Dim seasonOutput As String
+    Dim outLegs() As String
+    Dim transformedContract As String
+    Dim newText As String
+    Dim k As Long
     
     For i = 2 To lastRow
         text = ws.Cells(i, 1).Value
         If Trim(text) = "" Then GoTo NextRow
         
+        ' Split original text by spaces
         parts = Split(text, " ")
         If UBound(parts) < 1 Then GoTo NextRow
         
+        ' Transform contract legs
         contract = parts(1)
         legs = Split(contract, "/")
-        
-        seasonOutput = ""
-        
+        ReDim outLegs(LBound(legs) To UBound(legs))
         For j = LBound(legs) To UBound(legs)
-            transformedLeg = TransformTerm(Trim(legs(j)))
-            
-            If seasonOutput <> "" Then
-                seasonOutput = seasonOutput & "/" & transformedLeg
-            Else
-                seasonOutput = transformedLeg
-            End If
+            outLegs(j) = TransformTerm(Trim(legs(j)))
         Next j
         
-        ws.Cells(i, 3).Value = seasonOutput
+        ' Join back transformed legs
+        transformedContract = Join(outLegs, "/")
+        
+        ' Rebuild full text
+        newText = parts(0) & " " & transformedContract
+        If UBound(parts) > 1 Then
+            For k = 2 To UBound(parts)
+                newText = newText & " " & parts(k)
+            Next k
+        End If
+        
+        ' Write back to column 3
+        ws.Cells(i, 3).Value = newText
         
 NextRow:
     Next i
     
-    MsgBox "Contracts transformed!", vbInformation
+    MsgBox "Contracts transformed and rebuilt!", vbInformation
 End Sub
 
 '=============================
@@ -298,4 +306,6 @@ Function ToYYYY(yy As String) As Long
         ToYYYY = 1900 + n
     End If
 End Function
+
+
 

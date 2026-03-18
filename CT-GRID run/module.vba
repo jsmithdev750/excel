@@ -14,6 +14,14 @@ Type SAnchor
 End Type
 
 '=============================
+' Record type for each transformed row
+'=============================
+Type ContractRecord
+    FullText As String   ' full transformed text (column C)
+    RegionKey As String  ' parts(0) lowercased & trimmed
+End Type
+
+'=============================
 ' Main procedure
 '=============================
 Public Sub MapContractSeasons()
@@ -23,22 +31,22 @@ Public Sub MapContractSeasons()
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     
-    Dim i As Long
-    Dim text As String
-    Dim parts() As String
-    Dim contract As String
-    Dim legs() As String
-    Dim j As Long
-    Dim outLegs() As String
-    Dim transformedContract As String
-    Dim newText As String
-    Dim k As Long
+    Dim i As Long, j As Long
+    Dim text As String, parts() As String, contract As String, legs() As String
+    Dim outLegs() As String, transformedContract As String, newText As String
+    Dim recs() As ContractRecord
+    
+    '=============================
+    ' Step 1: Transform all contracts and store in array
+    '=============================
+    ReDim recs(1 To lastRow - 1)  ' assume header in row 1
+    Dim recIndex As Long
+    recIndex = 1
     
     For i = 2 To lastRow
         text = ws.Cells(i, 1).Value
         If Trim(text) = "" Then GoTo NextRow
         
-        ' Split original text by spaces
         parts = Split(text, " ")
         If UBound(parts) < 1 Then GoTo NextRow
         
@@ -50,26 +58,115 @@ Public Sub MapContractSeasons()
             outLegs(j) = TransformTerm(Trim(legs(j)))
         Next j
         
-        ' Join back transformed legs
         transformedContract = Join(outLegs, "/")
+        ws.Cells(i, 2).Value = transformedContract  ' optional: store in col B
         
         ' Rebuild full text
         newText = parts(0) & " " & transformedContract
         If UBound(parts) > 1 Then
-            For k = 2 To UBound(parts)
-                newText = newText & " " & parts(k)
-            Next k
+            For j = 2 To UBound(parts)
+                newText = newText & " " & parts(j)
+            Next j
         End If
         
-        ' Write back to column 3
-        ws.Cells(i, 3).Value = newText
+        ' Store in array
+        recs(recIndex).FullText = newText
+        recs(recIndex).RegionKey = LCase(Trim(parts(0)))
+        recIndex = recIndex + 1
         
 NextRow:
     Next i
     
-    MsgBox "Contracts transformed and rebuilt!", vbInformation
+    ' Resize array to actual number of records
+    If recIndex > 1 Then
+        ReDim Preserve recs(1 To recIndex - 1)
+    Else
+        MsgBox "No valid data found!", vbExclamation
+        Exit Sub
+    End If
+    
+    '=============================
+    ' Step 2: Read Region Order from workbook (case-insensitive, trim spaces)
+    '=============================
+    Dim orderCell As Range
+    Dim found As Boolean
+    found = False
+    
+    For Each orderCell In ws.UsedRange
+        If LCase(replace(Trim(orderCell.Value), Chr(160), "")) = "region order by" Then
+            found = True
+            Exit For
+        End If
+    Next orderCell
+    
+    If Not found Then
+        MsgBox "'Region Order BY' not found in Sheet1", vbCritical
+        Exit Sub
+    End If
+    
+    ' Region order list below the found cell
+    Dim rngOrder As Range
+    Set rngOrder = ws.Range(orderCell.Offset(1, 0), ws.Cells(ws.Rows.Count, orderCell.Column).End(xlUp))
+    
+    ' Build order dictionary
+    Dim orderDict As Object
+    Set orderDict = CreateObject("Scripting.Dictionary")
+    Dim idx As Long, cell As Range
+    idx = 1
+    For Each cell In rngOrder
+        If Trim(cell.Value) <> "" Then
+            orderDict(LCase(Trim(cell.Value))) = idx
+            idx = idx + 1
+        End If
+    Next cell
+    
+    '=============================
+    ' Step 3: Sort array by RegionKey based on orderDict
+    '=============================
+    Call SortContractRecordsByRegion(recs, orderDict)
+    
+    '=============================
+    ' Step 4: Write back sorted array to column C
+    '=============================
+    For i = 1 To UBound(recs)
+        ws.Cells(i + 1, 3).Value = recs(i).FullText
+    Next i
+    
+    MsgBox "Contracts transformed, rebuilt, and sorted by region!", vbInformation
 End Sub
 
+'=============================
+' Sorting routine (bubble sort for simplicity)
+' Can be replaced with more efficient sort if needed
+'=============================
+Sub SortContractRecordsByRegion(ByRef recs() As ContractRecord, ByRef orderDict As Object)
+    Dim i As Long, j As Long
+    Dim temp As ContractRecord
+    Dim key1 As Long, key2 As Long
+    
+    For i = LBound(recs) To UBound(recs) - 1
+        For j = i + 1 To UBound(recs)
+            key1 = GetOrderIndex(recs(i).RegionKey, orderDict)
+            key2 = GetOrderIndex(recs(j).RegionKey, orderDict)
+            If key1 > key2 Then
+                temp = recs(i)
+                recs(i) = recs(j)
+                recs(j) = temp
+            End If
+        Next j
+    Next i
+End Sub
+
+'=============================
+' Return index for sorting: if not in orderDict, assign large number (end of list)
+'=============================
+Function GetOrderIndex(ByVal key As String, ByRef orderDict As Object) As Long
+    If orderDict.exists(key) Then
+        GetOrderIndex = orderDict(key)
+    Else
+        GetOrderIndex = 9999
+    End If
+End Function
 '=============================
 ' Transform a single term or fallback
 '=============================

@@ -322,53 +322,83 @@ End Function
 '=============================
 Function WeekCodesFromRangeInclusive(d1 As Long, m1 As Long, y1 As Long, _
                                      d2 As Long, m2 As Long, y2 As Long) As String
-    Dim dtStart As Date, dtEnd As Date, dt As Date
-    Dim dict As Object
-    Dim wk As Long, yr As Long
-    Dim arr As Variant
-    Dim k As Variant
+    Dim dtStart As Date, dtEnd As Date
+    Dim dt As Date
     Dim result As String
-    Dim code As String
-    
-    Set dict = CreateObject("Scripting.Dictionary")
+    Dim wk As Long, yr As Long
+    Dim weekDict As Object
+    Dim totalDays As Long
+    Dim startIsWeekend As Boolean, endIsWeekend As Boolean, isWE As Boolean
+    Dim arrKeys() As Variant
+    Dim firstYr As Long, lastYr As Long
+    Dim i As Long
     
     dtStart = DateSerial(y1, m1 + 1, d1)
     dtEnd = DateSerial(y2, m2 + 1, d2)
     
+    totalDays = dtEnd - dtStart + 1
+    
+    ' Determine weekend flags
+    startIsWeekend = Weekday(dtStart, vbMonday) >= 6
+    endIsWeekend = Weekday(dtEnd, vbMonday) >= 6
+    
+    ' Only mark as WE if BOTH start and end are weekends
+    isWE = startIsWeekend And endIsWeekend
+    
+    If isWE Then
+        ' Format WE week number as 2 digits, and day numbers as 2 digits
+        result = "WE " & Format(Application.WorksheetFunction.IsoWeekNum(dtStart), "00") & _
+                 "(D" & Format(d1, "00") & "-" & Format(d2, "00") & ")"
+        WeekCodesFromRangeInclusive = result
+        Exit Function
+    End If
+    
+    ' If duration < 7 days, do NOT convert to WK — just return original range
+    If totalDays < 7 Then
+        result = d1 & "-" & d2 & "-" & Format(MonthName(m1 + 1, True), "mmm") & "-" & Right(CStr(y2), 2)
+        WeekCodesFromRangeInclusive = result
+        Exit Function
+    End If
+    
+    ' Duration >= 7 days — split across ISO weeks
+    Set weekDict = CreateObject("Scripting.Dictionary")
+    
     For dt = dtStart To dtEnd
-        wk = Application.WorksheetFunction.IsoWeekNum(dt)
-        yr = Year(dt)
-        Dim key As String
-        key = wk & "-" & yr
-        
-        If Not dict.exists(key) Then
-            dict.Add key, Array(False, 0, 0)
+        ' Only include weekdays
+        If Weekday(dt, vbMonday) < 6 Then
+            wk = Application.WorksheetFunction.IsoWeekNum(dt)
+            yr = Year(dt)
+            Dim key As String
+            key = wk & "-" & yr
+            If Not weekDict.exists(key) Then
+                weekDict.Add key, yr
+            End If
         End If
-        
-        arr = dict(key)
-        ' Check if weekend
-        If Weekday(dt, vbMonday) >= 6 Then
-            arr(0) = True
-            If arr(1) = 0 Or day(dt) < arr(1) Then arr(1) = day(dt)
-            If arr(2) = 0 Or day(dt) > arr(2) Then arr(2) = day(dt)
-        End If
-        dict(key) = arr
     Next dt
     
-    ' Build string
+    ' Build result string
     result = ""
-    For Each k In dict.Keys
-        arr = dict(k)
-        wk = Split(k, "-")(0)
-        yr = Split(k, "-")(1)
-        If arr(0) Then
-            code = "WE " & Format(wk, "00") & " (D" & arr(1) & "-D" & arr(2) & ")"
+    arrKeys = weekDict.Keys
+    firstYr = weekDict(arrKeys(0))
+    lastYr = weekDict(arrKeys(UBound(arrKeys)))
+    
+    For i = LBound(arrKeys) To UBound(arrKeys)
+        wk = Split(arrKeys(i), "-")(0)
+        yr = weekDict(arrKeys(i))
+        If i > LBound(arrKeys) Then result = result & "/"
+        
+        If firstYr <> lastYr Then
+            ' Multiple years — always append year
+            result = result & "Wk " & Format(wk, "00") & "-" & Right(yr, 2)
         Else
-            code = "Wk " & Format(wk, "00") & "-" & Right(yr, 2)
+            ' Same year — append year only on last week
+            If i = UBound(arrKeys) Then
+                result = result & "Wk " & Format(wk, "00") & "-" & Right(yr, 2)
+            Else
+                result = result & "Wk " & Format(wk, "00")
+            End If
         End If
-        If result <> "" Then result = result & ","
-        result = result & code
-    Next k
+    Next i
     
     WeekCodesFromRangeInclusive = result
 End Function
@@ -403,6 +433,8 @@ Function ToYYYY(yy As String) As Long
         ToYYYY = 1900 + n
     End If
 End Function
+
+
 
 
 

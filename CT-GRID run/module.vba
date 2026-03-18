@@ -19,6 +19,7 @@ End Type
 Type ContractRecord
     FullText As String   ' full transformed text (column C)
     RegionKey As String  ' parts(0) lowercased & trimmed
+    CategoryKey As String
 End Type
 
 '=============================
@@ -38,10 +39,9 @@ Public Sub MapContractSeasons()
     Dim recs() As ContractRecord
 
     '=============================
-    ' Step 0: Build Region Order FIRST ?
+    ' Step 0: Build Region Order
     '=============================
-    Dim orderCell As Range
-    Dim found As Boolean
+    Dim orderCell As Range, found As Boolean
     found = False
 
     For Each orderCell In ws.UsedRange
@@ -69,6 +69,37 @@ Public Sub MapContractSeasons()
         If Trim(cell.Value) <> "" Then
             orderDict(LCase(Trim(cell.Value))) = idx
             idx = idx + 1
+        End If
+    Next cell
+
+    '=============================
+    ' Step 0B: Category Order
+    '=============================
+    Dim catCell As Range, foundCat As Boolean
+    foundCat = False
+    
+    For Each catCell In ws.UsedRange
+        If LCase(replace(Trim(catCell.Value), Chr(160), "")) = "contract category order by" Then
+            foundCat = True
+            Exit For
+        End If
+    Next catCell
+    
+    If Not foundCat Then
+        MsgBox "'Contract Category Order BY' not found", vbCritical
+        Exit Sub
+    End If
+    
+    Dim catOrderDict As Object
+    Set catOrderDict = CreateObject("Scripting.Dictionary")
+    
+    Dim idx2 As Long
+    idx2 = 1
+    
+    For Each cell In ws.Range(catCell.Offset(1, 0), ws.Cells(ws.Rows.Count, catCell.Column).End(xlUp))
+        If Trim(cell.Value) <> "" Then
+            catOrderDict(LCase(Trim(cell.Value))) = idx2
+            idx2 = idx2 + 1
         End If
     Next cell
 
@@ -110,12 +141,13 @@ Public Sub MapContractSeasons()
         ' store
         recs(recIndex).FullText = newText
         recs(recIndex).RegionKey = GetPrimaryRegion(parts(0), orderDict)
+        recs(recIndex).CategoryKey = GetContractCategory(transformedContract)
         recIndex = recIndex + 1
 
 NextRow:
     Next i
 
-    ' resize
+    ' resize array
     If recIndex > 1 Then
         ReDim Preserve recs(1 To recIndex - 1)
     Else
@@ -126,7 +158,7 @@ NextRow:
     '=============================
     ' Step 2: Sort
     '=============================
-    Call SortContractRecordsByRegion(recs, orderDict)
+    Call SortContractRecords(recs, orderDict, catOrderDict)
 
     '=============================
     ' Step 3: Output
@@ -135,30 +167,45 @@ NextRow:
         ws.Cells(i + 1, 3).Value = recs(i).FullText
     Next i
 
-    MsgBox "Done ? Sorted by Region (correct order)", vbInformation
+    MsgBox "Done! Sorted by Region and Category.", vbInformation
 
 End Sub
-
 '=============================
 ' Sorting routine (bubble sort for simplicity)
 ' Can be replaced with more efficient sort if needed
 '=============================
-Sub SortContractRecordsByRegion(ByRef recs() As ContractRecord, ByRef orderDict As Object)
+Sub SortContractRecords(ByRef recs() As ContractRecord, _
+                        ByRef regionDict As Object, _
+                        ByRef catDict As Object)
+
     Dim i As Long, j As Long
     Dim temp As ContractRecord
-    Dim key1 As Long, key2 As Long
+    Dim r1 As Long, r2 As Long
+    Dim c1 As Long, c2 As Long
     
     For i = LBound(recs) To UBound(recs) - 1
         For j = i + 1 To UBound(recs)
-            key1 = GetOrderIndex(recs(i).RegionKey, orderDict)
-            key2 = GetOrderIndex(recs(j).RegionKey, orderDict)
-            If key1 > key2 Then
-                temp = recs(i)
-                recs(i) = recs(j)
-                recs(j) = temp
+            
+            r1 = GetOrderIndex(recs(i).RegionKey, regionDict)
+            r2 = GetOrderIndex(recs(j).RegionKey, regionDict)
+            
+            If r1 > r2 Then
+                temp = recs(i): recs(i) = recs(j): recs(j) = temp
+            
+            ElseIf r1 = r2 Then
+                
+                c1 = GetOrderIndex(recs(i).CategoryKey, catDict)
+                c2 = GetOrderIndex(recs(j).CategoryKey, catDict)
+                
+                If c1 > c2 Then
+                    temp = recs(i): recs(i) = recs(j): recs(j) = temp
+                End If
+                
             End If
+            
         Next j
     Next i
+
 End Sub
 
 '=============================
@@ -437,28 +484,35 @@ Function ToYYYY(yy As String) As Long
         ToYYYY = 1900 + n
     End If
 End Function
-
-
+'=============================
+' Updated GetPrimaryRegion
+'=============================
 Function GetPrimaryRegion(rawRegion As String, orderDict As Object) As String
-    
     Dim r As String
     r = LCase(Trim(rawRegion))
     
-    Dim firstPart As String
-    
-    ' If contains "/", take FIRST part only
-    If InStr(r, "/") > 0 Then
-        firstPart = Split(r, "/")(0)
+    ' Full match first
+    If orderDict.exists(r) Then
+        GetPrimaryRegion = r
     Else
-        firstPart = r
+        ' fallback: first part only
+        If InStr(r, "/") > 0 Then
+            GetPrimaryRegion = Split(r, "/")(0)
+        Else
+            GetPrimaryRegion = r
+        End If
     End If
-    
-    ' If exists in order list ? use it
-    If orderDict.exists(firstPart) Then
-        GetPrimaryRegion = firstPart
+End Function
+
+'=============================
+' Updated GetContractCategory
+'=============================
+Function GetContractCategory(contract As String) As String
+    If InStr(contract, "/") > 0 Then
+        GetContractCategory = "spread"
+    ElseIf UBound(Split(contract, "-")) >= 2 Then
+        GetContractCategory = "strips"
     Else
-        ' fallback (still return first part)
-        GetPrimaryRegion = firstPart
+        GetContractCategory = "flat"
     End If
-    
 End Function

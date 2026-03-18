@@ -25,43 +25,81 @@ End Type
 ' Main procedure
 '=============================
 Public Sub MapContractSeasons()
+
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets("Sheet1")
     
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-    
+
     Dim i As Long, j As Long
     Dim text As String, parts() As String, contract As String, legs() As String
     Dim outLegs() As String, transformedContract As String, newText As String
     Dim recs() As ContractRecord
-    
+
     '=============================
-    ' Step 1: Transform all contracts and store in array
+    ' Step 0: Build Region Order FIRST ?
     '=============================
-    ReDim recs(1 To lastRow - 1)  ' assume header in row 1
+    Dim orderCell As Range
+    Dim found As Boolean
+    found = False
+
+    For Each orderCell In ws.UsedRange
+        If LCase(replace(Trim(orderCell.Value), Chr(160), "")) = "region order by" Then
+            found = True
+            Exit For
+        End If
+    Next orderCell
+
+    If Not found Then
+        MsgBox "'Region Order BY' not found in Sheet1", vbCritical
+        Exit Sub
+    End If
+
+    Dim rngOrder As Range
+    Set rngOrder = ws.Range(orderCell.Offset(1, 0), ws.Cells(ws.Rows.Count, orderCell.Column).End(xlUp))
+
+    Dim orderDict As Object
+    Set orderDict = CreateObject("Scripting.Dictionary")
+
+    Dim idx As Long, cell As Range
+    idx = 1
+
+    For Each cell In rngOrder
+        If Trim(cell.Value) <> "" Then
+            orderDict(LCase(Trim(cell.Value))) = idx
+            idx = idx + 1
+        End If
+    Next cell
+
+    '=============================
+    ' Step 1: Transform + store
+    '=============================
+    ReDim recs(1 To lastRow - 1)
     Dim recIndex As Long
     recIndex = 1
-    
+
     For i = 2 To lastRow
+        
         text = ws.Cells(i, 1).Value
         If Trim(text) = "" Then GoTo NextRow
         
         parts = Split(text, " ")
         If UBound(parts) < 1 Then GoTo NextRow
         
-        ' Transform contract legs
+        ' Transform contract
         contract = parts(1)
         legs = Split(contract, "/")
         ReDim outLegs(LBound(legs) To UBound(legs))
+        
         For j = LBound(legs) To UBound(legs)
             outLegs(j) = TransformTerm(Trim(legs(j)))
         Next j
         
         transformedContract = Join(outLegs, "/")
-        ws.Cells(i, 2).Value = transformedContract  ' optional: store in col B
+        ws.Cells(i, 2).Value = transformedContract
         
-        ' Rebuild full text
+        ' rebuild full text
         newText = parts(0) & " " & transformedContract
         If UBound(parts) > 1 Then
             For j = 2 To UBound(parts)
@@ -69,70 +107,36 @@ Public Sub MapContractSeasons()
             Next j
         End If
         
-        ' Store in array
+        ' store
         recs(recIndex).FullText = newText
-        recs(recIndex).RegionKey = LCase(Trim(parts(0)))
+        recs(recIndex).RegionKey = GetPrimaryRegion(parts(0), orderDict)
         recIndex = recIndex + 1
-        
+
 NextRow:
     Next i
-    
-    ' Resize array to actual number of records
+
+    ' resize
     If recIndex > 1 Then
         ReDim Preserve recs(1 To recIndex - 1)
     Else
         MsgBox "No valid data found!", vbExclamation
         Exit Sub
     End If
-    
+
     '=============================
-    ' Step 2: Read Region Order from workbook (case-insensitive, trim spaces)
-    '=============================
-    Dim orderCell As Range
-    Dim found As Boolean
-    found = False
-    
-    For Each orderCell In ws.UsedRange
-        If LCase(replace(Trim(orderCell.Value), Chr(160), "")) = "region order by" Then
-            found = True
-            Exit For
-        End If
-    Next orderCell
-    
-    If Not found Then
-        MsgBox "'Region Order BY' not found in Sheet1", vbCritical
-        Exit Sub
-    End If
-    
-    ' Region order list below the found cell
-    Dim rngOrder As Range
-    Set rngOrder = ws.Range(orderCell.Offset(1, 0), ws.Cells(ws.Rows.Count, orderCell.Column).End(xlUp))
-    
-    ' Build order dictionary
-    Dim orderDict As Object
-    Set orderDict = CreateObject("Scripting.Dictionary")
-    Dim idx As Long, cell As Range
-    idx = 1
-    For Each cell In rngOrder
-        If Trim(cell.Value) <> "" Then
-            orderDict(LCase(Trim(cell.Value))) = idx
-            idx = idx + 1
-        End If
-    Next cell
-    
-    '=============================
-    ' Step 3: Sort array by RegionKey based on orderDict
+    ' Step 2: Sort
     '=============================
     Call SortContractRecordsByRegion(recs, orderDict)
-    
+
     '=============================
-    ' Step 4: Write back sorted array to column C
+    ' Step 3: Output
     '=============================
     For i = 1 To UBound(recs)
         ws.Cells(i + 1, 3).Value = recs(i).FullText
     Next i
-    
-    MsgBox "Contracts transformed, rebuilt, and sorted by region!", vbInformation
+
+    MsgBox "Done ? Sorted by Region (correct order)", vbInformation
+
 End Sub
 
 '=============================
@@ -389,13 +393,13 @@ Function WeekCodesFromRangeInclusive(d1 As Long, m1 As Long, y1 As Long, _
         
         If firstYr <> lastYr Then
             ' Multiple years — always append year
-            result = result & "Wk " & Format(wk, "00") & "-" & Right(yr, 2)
+            result = result & "Wk" & Format(wk, "00") & "-" & Right(yr, 2)
         Else
             ' Same year — append year only on last week
             If i = UBound(arrKeys) Then
-                result = result & "Wk " & Format(wk, "00") & "-" & Right(yr, 2)
+                result = result & "Wk" & Format(wk, "00") & "-" & Right(yr, 2)
             Else
-                result = result & "Wk " & Format(wk, "00")
+                result = result & "Wk" & Format(wk, "00")
             End If
         End If
     Next i
@@ -435,6 +439,26 @@ Function ToYYYY(yy As String) As Long
 End Function
 
 
-
-
-
+Function GetPrimaryRegion(rawRegion As String, orderDict As Object) As String
+    
+    Dim r As String
+    r = LCase(Trim(rawRegion))
+    
+    Dim firstPart As String
+    
+    ' If contains "/", take FIRST part only
+    If InStr(r, "/") > 0 Then
+        firstPart = Split(r, "/")(0)
+    Else
+        firstPart = r
+    End If
+    
+    ' If exists in order list ? use it
+    If orderDict.exists(firstPart) Then
+        GetPrimaryRegion = firstPart
+    Else
+        ' fallback (still return first part)
+        GetPrimaryRegion = firstPart
+    End If
+    
+End Function

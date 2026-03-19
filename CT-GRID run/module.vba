@@ -346,6 +346,19 @@ Function TransformTermSingle(ByVal leg As String) As String
         Exit Function
     End If
     
+    ' Pattern: single day like 20-Mar-26
+    re.pattern = "^(\d{1,2})-([A-Za-z]{3,9})-(\d{2})$"
+    If re.Test(leg) Then
+        Set matches = re.Execute(leg)(0)
+        d1 = CLng(matches.SubMatches(0))
+        m1 = MonthIndex(matches.SubMatches(1))
+        y1 = ToYYYY(matches.SubMatches(2))
+        
+        ' single day ? use WeekCodesFromRangeInclusive with same start/end
+        TransformTermSingle = WeekCodesFromRangeInclusive(d1, m1, y1, d1, m1, y1)
+        Exit Function
+    End If
+    
     ' Non-week transforms (quarters, summer, winter, FY)
     lowercapLeg = LCase(Trim(leg))
     
@@ -387,6 +400,7 @@ Function WeekCodesFromRangeInclusive(d1 As Long, m1 As Long, y1 As Long, _
     dtStart = DateSerial(y1, m1 + 1, d1)
     dtEnd = DateSerial(y2, m2 + 1, d2)
     
+    
     totalDays = dtEnd - dtStart + 1
     
     ' Determine weekend flags
@@ -395,6 +409,12 @@ Function WeekCodesFromRangeInclusive(d1 As Long, m1 As Long, y1 As Long, _
     
     ' Only mark as WE if BOTH start and end are weekends
     isWE = startIsWeekend And endIsWeekend
+    
+    If totalDays = 1 Then
+        result = "D" & Format(d1, "00")
+        WeekCodesFromRangeInclusive = result
+        Exit Function
+    End If
     
     If isWE Then
         ' Format WE week number as 2 digits, and day numbers as 2 digits
@@ -516,3 +536,4 @@ Function GetContractCategory(contract As String) As String
         GetContractCategory = "flat"
     End If
 End Function
+

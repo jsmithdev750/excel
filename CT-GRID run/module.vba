@@ -97,6 +97,11 @@ Public Sub MapContractSeasons()
         recs(recIndex).CategoryKey = GetContractCategory(transformedContract)
         recs(recIndex).ContractKey = GetContractOrderKey(transformedContract)
         recIndex = recIndex + 1
+        
+        
+        'Refresh the wb link
+        ThisWorkbook.RefreshAll
+        
 NextRow:
     Next i
     
@@ -152,9 +157,15 @@ Sub SortContractRecords(ByRef recs() As ContractRecord, _
                 ElseIf c1 = c2 Then
                     co1 = GetOrderIndex(LCase(recs(i).ContractKey), contractDict)
                     co2 = GetOrderIndex(LCase(recs(j).ContractKey), contractDict)
-                    If co1 > co2 Then
-                        temp = recs(i): recs(i) = recs(j): recs(j) = temp
-                    End If
+If co1 > co2 Then
+    temp = recs(i): recs(i) = recs(j): recs(j) = temp
+
+ElseIf co1 = co2 Then
+    If CompareContractWithinType(recs(i).FullText, recs(j).FullText) > 0 Then
+        temp = recs(i): recs(i) = recs(j): recs(j) = temp
+    End If
+End If
+
                 End If
             End If
         Next j
@@ -328,7 +339,7 @@ Function TransformTermSingle(ByVal leg As String) As String
         Case lowercapLeg Like "apr-sep": TransformTermSingle = "Sum": Exit Function
         Case lowercapLeg Like "oct-mar-##": TransformTermSingle = "Win-" & Format(CLng(Right(lowercapLeg, 2)) - 1, "00"): Exit Function
         Case lowercapLeg Like "oct-mar": TransformTermSingle = "Win": Exit Function
-        Case lowercapLeg Like "apr-mar-##": TransformTermSingle = "FY-" & Format(CLng(Right(lowercapLeg, 2)) - 1, "00"): Exit Function
+        Case lowercapLeg Like "apr-mar-##": TransformTermSingle = "FY" & Format(CLng(Right(lowercapLeg, 2)) - 1, "00"): Exit Function
         Case lowercapLeg Like "apr-mar": TransformTermSingle = "FY": Exit Function
         Case Else: TransformTermSingle = leg
     End Select
@@ -377,21 +388,21 @@ Function WeekCodesFromRangeInclusive(d1 As Long, m1 As Long, y1 As Long, _
         Exit Function
     End If
     
-    ' If duration < 7 days, do NOT convert to WK — just return original range
+    ' If duration < 7 days, do NOT convert to WK - just return original range
     If totalDays < 7 Then
         result = d1 & "-" & d2 & "-" & Format(MonthName(m1 + 1, True), "mmm") & "-" & Right(CStr(y2), 2)
         WeekCodesFromRangeInclusive = result
         Exit Function
     End If
     
-    ' Duration >= 7 days — split across ISO weeks
+    ' Duration >= 7 days - split across ISO weeks
     Set weekDict = CreateObject("Scripting.Dictionary")
     
     For dt = dtStart To dtEnd
         ' Only include weekdays
         If Weekday(dt, vbMonday) < 6 Then
             wk = Application.WorksheetFunction.IsoWeekNum(dt)
-            yr = Year(dt)
+            yr = Year(dt - Weekday(dt, vbMonday) + 4)
             Dim key As String
             key = wk & "-" & yr
             If Not weekDict.exists(key) Then
@@ -400,29 +411,63 @@ Function WeekCodesFromRangeInclusive(d1 As Long, m1 As Long, y1 As Long, _
         End If
     Next dt
     
-    ' Build result string
-    result = ""
-    arrKeys = weekDict.Keys
-    firstYr = weekDict(arrKeys(0))
-    lastYr = weekDict(arrKeys(UBound(arrKeys)))
+    '===========================
+    ' Build COMPRESSED result
+    '===========================
+    Dim weekList() As Long
+    Dim yearList() As Long
+    Dim k As Long
+    Dim key2 As Variant
     
-    For i = LBound(arrKeys) To UBound(arrKeys)
-        wk = Split(arrKeys(i), "-")(0)
-        yr = weekDict(arrKeys(i))
-        If i > LBound(arrKeys) Then result = result & "/"
+    ReDim weekList(0 To weekDict.Count - 1)
+    ReDim yearList(0 To weekDict.Count - 1)
+    
+    ' Move dictionary to arrays
+    k = 0
+    For Each key2 In weekDict.Keys
+        weekList(k) = CLng(Split(key2, "-")(0))
+        yearList(k) = weekDict(key2)
+        k = k + 1
+    Next key2
+    
+    ' Sort weeks (important!)
+Dim x As Long, y As Long
+Dim tmpWk As Long, tmpYr As Long
+
+For x = LBound(weekList) To UBound(weekList) - 1
+    For y = x + 1 To UBound(weekList)
         
-        If firstYr <> lastYr Then
-            ' Multiple years — always append year
-            result = result & "Wk" & Format(wk, "00") & "-" & Right(yr, 2)
-        Else
-            ' Same year — append year only on last week
-            If i = UBound(arrKeys) Then
-                result = result & "Wk" & Format(wk, "00") & "-" & Right(yr, 2)
-            Else
-                result = result & "Wk" & Format(wk, "00")
-            End If
+        If (yearList(x) > yearList(y)) Or _
+           (yearList(x) = yearList(y) And weekList(x) > weekList(y)) Then
+            
+            ' Swap week
+            tmpWk = weekList(x)
+            weekList(x) = weekList(y)
+            weekList(y) = tmpWk
+            
+            ' Swap year (IMPORTANT)
+            tmpYr = yearList(x)
+            yearList(x) = yearList(y)
+            yearList(y) = tmpYr
+            
         End If
-    Next i
+        
+    Next y
+Next x
+    
+    ' Build compressed range
+    Dim startWk As Long, endWk As Long
+    startWk = weekList(LBound(weekList))
+    endWk = weekList(UBound(weekList))
+    
+    Dim finalYear As Long
+    finalYear = yearList(UBound(yearList))
+    
+    If startWk = endWk Then
+        result = "Wk" & Format(startWk, "00") & "-" & Right(finalYear, 2)
+    Else
+        result = "Wk" & Format(startWk, "00") & "-Wk" & Format(endWk, "00") & "-" & Right(finalYear, 2)
+    End If
     
     WeekCodesFromRangeInclusive = result
 End Function
@@ -577,5 +622,118 @@ Function GetContractOrderKey(contract As String) As String
     ' fallback
     GetContractOrderKey = firstPart
 End Function
+
+
+Function CompareContractWithinType(c1 As String, c2 As String) As Long
+    
+    Dim v1 As Double, v2 As Double
+    
+    v1 = GetIntraTypeValue(c1)
+    v2 = GetIntraTypeValue(c2)
+    
+    If v1 > v2 Then
+        CompareContractWithinType = 1
+    ElseIf v1 < v2 Then
+        CompareContractWithinType = -1
+    Else
+        CompareContractWithinType = 0
+    End If
+
+End Function
+Function GetIntraTypeValue(contract As String) As Double
+    
+    Dim c As String
+    c = LCase(contract)
+    
+    ' Use first leg only (important for spreads)
+    If InStr(c, " ") > 0 Then c = Split(c, " ")(1)
+    If InStr(c, "/") > 0 Then c = Split(c, "/")(0)
+    
+    '=====================
+    ' DAY: D##
+    '=====================
+    If Left(c, 1) = "d" Then
+        GetIntraTypeValue = val(Mid(c, 2))
+        Exit Function
+    End If
+    
+    '=====================
+    ' WE: WE ##
+    '=====================
+If Left(c, 2) = "we" Then
+    Dim re As Object, m As Object
+    Set re = CreateObject("VBScript.RegExp")
+    re.pattern = "we\s*(\d+)"
+    re.IgnoreCase = True
+    
+    If re.Test(c) Then
+        Set m = re.Execute(c)(0)
+        GetIntraTypeValue = CLng(m.SubMatches(0))
+    Else
+        GetIntraTypeValue = 0
+    End If
+    Exit Function
+End If
+    
+    '=====================
+    ' WK: Wk##-YY
+    '=====================
+If Left(c, 2) = "wk" Then
+    Dim wk As Long, yy As Long
+    
+    wk = val(Mid(c, 3, 2))
+    yy = val(Right(c, 2))
+    
+    GetIntraTypeValue = yy * 100 + wk
+    Exit Function
+End If
+    
+    '=====================
+    ' MONTH: Jan-YY
+    '=====================
+    Dim months As Variant
+    months = Array("jan", "feb", "mar", "apr", "may", "jun", _
+                   "jul", "aug", "sep", "oct", "nov", "dec")
+    
+    Dim i As Long
+    For i = 0 To 11
+        If Left(c, 3) = months(i) Then
+            GetIntraTypeValue = val(Right(c, 2)) * 100 + i
+            Exit Function
+        End If
+    Next i
+    
+    '=====================
+    ' QUARTER: Q#-YY
+    '=====================
+    If Left(c, 1) = "q" Then
+        Dim qNum As Long, qYear As Long
+        
+        qNum = val(Mid(c, 2, 1))
+        qYear = val(Right(c, 2))
+        
+        ' Year priority, then quarter
+        GetIntraTypeValue = qYear * 10 + qNum
+        Exit Function
+    End If
+    
+    '=====================
+    ' SUM / WIN / FY
+    '=====================
+    If Left(c, 3) = "sum" Or Left(c, 3) = "win" Then
+        GetIntraTypeValue = val(Right(c, 2))
+        Exit Function
+    End If
+    
+    If Left(c, 2) = "fy" Then
+        GetIntraTypeValue = val(Right(c, 2))
+        Exit Function
+    End If
+    
+    ' fallback
+    GetIntraTypeValue = 0
+
+End Function
+
 
 

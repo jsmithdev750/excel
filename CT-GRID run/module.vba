@@ -20,6 +20,7 @@ Type ContractRecord
     FullText As String   ' full transformed text (column C)
     RegionKey As String  ' parts(0) lowercased & trimmed
     CategoryKey As String
+    ContractKey As String
 End Type
 
 '=============================
@@ -32,86 +33,38 @@ Public Sub MapContractSeasons()
     
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
-
+    
     Dim i As Long, j As Long
     Dim text As String, parts() As String, contract As String, legs() As String
     Dim outLegs() As String, transformedContract As String, newText As String
     Dim recs() As ContractRecord
-
+    Dim recIndex As Long
+    
     '=============================
     ' Step 0: Build Region Order
     '=============================
-    Dim orderCell As Range, found As Boolean
-    found = False
-
-    For Each orderCell In ws.UsedRange
-        If LCase(replace(Trim(orderCell.Value), Chr(160), "")) = "region order by" Then
-            found = True
-            Exit For
-        End If
-    Next orderCell
-
-    If Not found Then
-        MsgBox "'Region Order BY' not found in Sheet1", vbCritical
-        Exit Sub
-    End If
-
-    Dim rngOrder As Range
-    Set rngOrder = ws.Range(orderCell.Offset(1, 0), ws.Cells(ws.Rows.Count, orderCell.Column).End(xlUp))
-
     Dim orderDict As Object
-    Set orderDict = CreateObject("Scripting.Dictionary")
-
-    Dim idx As Long, cell As Range
-    idx = 1
-
-    For Each cell In rngOrder
-        If Trim(cell.Value) <> "" Then
-            orderDict(LCase(Trim(cell.Value))) = idx
-            idx = idx + 1
-        End If
-    Next cell
-
+    Set orderDict = BuildOrderDict(ws, "region order by")
+    
     '=============================
-    ' Step 0B: Category Order
+    ' Step 0B: Build Contract Category Order
     '=============================
-    Dim catCell As Range, foundCat As Boolean
-    foundCat = False
-    
-    For Each catCell In ws.UsedRange
-        If LCase(replace(Trim(catCell.Value), Chr(160), "")) = "contract category order by" Then
-            foundCat = True
-            Exit For
-        End If
-    Next catCell
-    
-    If Not foundCat Then
-        MsgBox "'Contract Category Order BY' not found", vbCritical
-        Exit Sub
-    End If
-    
     Dim catOrderDict As Object
-    Set catOrderDict = CreateObject("Scripting.Dictionary")
+    Set catOrderDict = BuildOrderDict(ws, "contract category order by")
     
-    Dim idx2 As Long
-    idx2 = 1
+    '=============================
+    ' Step 0C: Build Contract Order
+    '=============================
+    Dim contractOrderDict As Object
+    Set contractOrderDict = BuildOrderDict(ws, "contract order by")
     
-    For Each cell In ws.Range(catCell.Offset(1, 0), ws.Cells(ws.Rows.Count, catCell.Column).End(xlUp))
-        If Trim(cell.Value) <> "" Then
-            catOrderDict(LCase(Trim(cell.Value))) = idx2
-            idx2 = idx2 + 1
-        End If
-    Next cell
-
     '=============================
     ' Step 1: Transform + store
     '=============================
     ReDim recs(1 To lastRow - 1)
-    Dim recIndex As Long
     recIndex = 1
-
+    
     For i = 2 To lastRow
-        
         text = ws.Cells(i, 1).Value
         If Trim(text) = "" Then GoTo NextRow
         
@@ -130,7 +83,7 @@ Public Sub MapContractSeasons()
         transformedContract = Join(outLegs, "/")
         ws.Cells(i, 2).Value = transformedContract
         
-        ' rebuild full text
+        ' Rebuild full text
         newText = parts(0) & " " & transformedContract
         If UBound(parts) > 1 Then
             For j = 2 To UBound(parts)
@@ -138,74 +91,74 @@ Public Sub MapContractSeasons()
             Next j
         End If
         
-        ' store
+        ' Store
         recs(recIndex).FullText = newText
         recs(recIndex).RegionKey = GetPrimaryRegion(parts(0), orderDict)
         recs(recIndex).CategoryKey = GetContractCategory(transformedContract)
+        recs(recIndex).ContractKey = GetContractOrderKey(transformedContract)
         recIndex = recIndex + 1
-
 NextRow:
     Next i
-
-    ' resize array
+    
+    ' Resize array
     If recIndex > 1 Then
         ReDim Preserve recs(1 To recIndex - 1)
     Else
         MsgBox "No valid data found!", vbExclamation
         Exit Sub
     End If
-
+    
     '=============================
-    ' Step 2: Sort
+    ' Step 2: Sort by Region -> Category -> Contract
     '=============================
-    Call SortContractRecords(recs, orderDict, catOrderDict)
-
+    Call SortContractRecords(recs, orderDict, catOrderDict, contractOrderDict)
+    
     '=============================
     ' Step 3: Output
     '=============================
     For i = 1 To UBound(recs)
         ws.Cells(i + 1, 3).Value = recs(i).FullText
     Next i
-
-    MsgBox "Done! Sorted by Region and Category.", vbInformation
-
+    
+    MsgBox "Done! Sorted by Region, Category, and Contract Order.", vbInformation
 End Sub
+
 '=============================
-' Sorting routine (bubble sort for simplicity)
-' Can be replaced with more efficient sort if needed
+' Sorting routine with 3 levels
 '=============================
 Sub SortContractRecords(ByRef recs() As ContractRecord, _
                         ByRef regionDict As Object, _
-                        ByRef catDict As Object)
-
+                        ByRef catDict As Object, _
+                        ByRef contractDict As Object)
     Dim i As Long, j As Long
     Dim temp As ContractRecord
     Dim r1 As Long, r2 As Long
     Dim c1 As Long, c2 As Long
+    Dim co1 As Long, co2 As Long
     
     For i = LBound(recs) To UBound(recs) - 1
         For j = i + 1 To UBound(recs)
-            
             r1 = GetOrderIndex(recs(i).RegionKey, regionDict)
             r2 = GetOrderIndex(recs(j).RegionKey, regionDict)
             
             If r1 > r2 Then
                 temp = recs(i): recs(i) = recs(j): recs(j) = temp
-            
             ElseIf r1 = r2 Then
-                
                 c1 = GetOrderIndex(recs(i).CategoryKey, catDict)
                 c2 = GetOrderIndex(recs(j).CategoryKey, catDict)
                 
                 If c1 > c2 Then
                     temp = recs(i): recs(i) = recs(j): recs(j) = temp
+                ElseIf c1 = c2 Then
+                    co1 = GetOrderIndex(LCase(recs(i).ContractKey), contractDict)
+                    co2 = GetOrderIndex(LCase(recs(j).ContractKey), contractDict)
+                    If co1 > co2 Then
+                        temp = recs(i): recs(i) = recs(j): recs(j) = temp
+                    End If
                 End If
-                
             End If
-            
         Next j
     Next i
-
 End Sub
 
 '=============================
@@ -301,7 +254,7 @@ Function TransformTermSingle(ByVal leg As String) As String
         Set matches = re.Execute(leg)(0)
         d1 = CLng(matches.SubMatches(0))
         d2 = CLng(matches.SubMatches(1))
-        m2 = MonthIndex(matches.SubMatches(2))
+        m2 = monthIndex(matches.SubMatches(2))
         y2 = ToYYYY(matches.SubMatches(3))
         
         If d1 <= d2 Then
@@ -321,9 +274,9 @@ Function TransformTermSingle(ByVal leg As String) As String
     If re.Test(leg) Then
         Set matches = re.Execute(leg)(0)
         d1 = CLng(matches.SubMatches(0))
-        m1 = MonthIndex(matches.SubMatches(1))
+        m1 = monthIndex(matches.SubMatches(1))
         d2 = CLng(matches.SubMatches(2))
-        m2 = MonthIndex(matches.SubMatches(3))
+        m2 = monthIndex(matches.SubMatches(3))
         y1 = ToYYYY(matches.SubMatches(4))
         y2 = y1
         
@@ -336,10 +289,10 @@ Function TransformTermSingle(ByVal leg As String) As String
     If re.Test(leg) Then
         Set matches = re.Execute(leg)(0)
         d1 = CLng(matches.SubMatches(0))
-        m1 = MonthIndex(matches.SubMatches(1))
+        m1 = monthIndex(matches.SubMatches(1))
         y1 = ToYYYY(matches.SubMatches(2))
         d2 = CLng(matches.SubMatches(3))
-        m2 = MonthIndex(matches.SubMatches(4))
+        m2 = monthIndex(matches.SubMatches(4))
         y2 = ToYYYY(matches.SubMatches(5))
         
         TransformTermSingle = WeekCodesFromRangeInclusive(d1, m1, y1, d2, m2, y2)
@@ -351,7 +304,7 @@ Function TransformTermSingle(ByVal leg As String) As String
     If re.Test(leg) Then
         Set matches = re.Execute(leg)(0)
         d1 = CLng(matches.SubMatches(0))
-        m1 = MonthIndex(matches.SubMatches(1))
+        m1 = monthIndex(matches.SubMatches(1))
         y1 = ToYYYY(matches.SubMatches(2))
         
         ' single day ? use WeekCodesFromRangeInclusive with same start/end
@@ -477,21 +430,21 @@ End Function
 '=============================
 ' Helpers
 '=============================
-Function MonthIndex(mon As String) As Long
+Function monthIndex(mon As String) As Long
     Select Case LCase(Left(mon, 3))
-        Case "jan": MonthIndex = 0
-        Case "feb": MonthIndex = 1
-        Case "mar": MonthIndex = 2
-        Case "apr": MonthIndex = 3
-        Case "may": MonthIndex = 4
-        Case "jun": MonthIndex = 5
-        Case "jul": MonthIndex = 6
-        Case "aug": MonthIndex = 7
-        Case "sep": MonthIndex = 8
-        Case "oct": MonthIndex = 9
-        Case "nov": MonthIndex = 10
-        Case "dec": MonthIndex = 11
-        Case Else: MonthIndex = -1
+        Case "jan": monthIndex = 0
+        Case "feb": monthIndex = 1
+        Case "mar": monthIndex = 2
+        Case "apr": monthIndex = 3
+        Case "may": monthIndex = 4
+        Case "jun": monthIndex = 5
+        Case "jul": monthIndex = 6
+        Case "aug": monthIndex = 7
+        Case "sep": monthIndex = 8
+        Case "oct": monthIndex = 9
+        Case "nov": monthIndex = 10
+        Case "dec": monthIndex = 11
+        Case Else: monthIndex = -1
     End Select
 End Function
 
@@ -536,4 +489,93 @@ Function GetContractCategory(contract As String) As String
         GetContractCategory = "flat"
     End If
 End Function
+'=============================
+' Build any order dictionary dynamically
+'=============================
+Function BuildOrderDict(ws As Worksheet, searchText As String) As Object
+    Dim cell As Range, found As Boolean
+    Dim orderDict As Object
+    Dim idx As Long
+    Set orderDict = CreateObject("Scripting.Dictionary")
+    found = False
+    
+    ' Search for the header
+    For Each cell In ws.UsedRange
+        If LCase(Trim(cell.Value)) = LCase(searchText) Then
+            found = True
+            Exit For
+        End If
+    Next cell
+    
+    If Not found Then
+        MsgBox "'" & searchText & "' not found!", vbCritical
+        Exit Function
+    End If
+    
+    ' Read values until blank
+    idx = 1
+    Dim r As Long
+    r = cell.Row + 1
+    Do While Trim(ws.Cells(r, cell.Column).Value) <> ""
+        orderDict(LCase(Trim(ws.Cells(r, cell.Column).Value))) = idx
+        idx = idx + 1
+        r = r + 1
+    Loop
+    
+    Set BuildOrderDict = orderDict
+End Function
+'=============================
+' Get Contract Order key for sorting
+'=============================
+Function GetContractOrderKey(contract As String) As String
+    Dim firstPart As String
+    firstPart = contract
+    
+    ' DAY: D##
+    If UCase(Left(firstPart, 1)) = "D" And IsNumeric(Mid(firstPart, 2, 2)) Then
+        GetContractOrderKey = "day": Exit Function
+    End If
+    
+    ' WE: starts with WE
+    If UCase(Left(firstPart, 2)) = "WE" Then
+        GetContractOrderKey = "we": Exit Function
+    End If
+    
+    ' WK: starts with Wk
+    If UCase(Left(firstPart, 2)) = "WK" Then
+        GetContractOrderKey = "wk": Exit Function
+    End If
+    
+    ' Month names (first 3 chars)
+    Dim months As Variant
+    months = Array("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec")
+    Dim m As Variant
+    For Each m In months
+        If LCase(Left(firstPart, 3)) = m Then
+            GetContractOrderKey = m: Exit Function
+        End If
+    Next m
+    
+    ' Q1-Q4
+    If LCase(Left(firstPart, 2)) Like "q#" Then
+        GetContractOrderKey = LCase(Left(firstPart, 2)): Exit Function
+    End If
+    
+    ' Sum / Win (first 3 chars)
+    If LCase(Left(firstPart, 3)) = "sum" Then
+        GetContractOrderKey = "sum": Exit Function
+    End If
+    If LCase(Left(firstPart, 3)) = "win" Then
+        GetContractOrderKey = "win": Exit Function
+    End If
+    
+    ' FY (first 2 chars)
+    If LCase(Left(firstPart, 2)) = "fy" Then
+        GetContractOrderKey = "fy": Exit Function
+    End If
+    
+    ' fallback
+    GetContractOrderKey = firstPart
+End Function
+
 

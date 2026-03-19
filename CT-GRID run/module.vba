@@ -31,6 +31,9 @@ Public Sub MapContractSeasons()
     Dim ws As Worksheet
     Set ws = ThisWorkbook.Sheets("Sheet1")
     
+    ws.Range("B2:B" & ws.Cells(ws.Rows.Count, "B").End(xlUp).Row).ClearContents
+    ws.Range("C2:C" & ws.Cells(ws.Rows.Count, "C").End(xlUp).Row).ClearContents
+    
     Dim lastRow As Long
     lastRow = ws.Cells(ws.Rows.Count, "A").End(xlUp).Row
     
@@ -734,6 +737,4 @@ End If
     GetIntraTypeValue = 0
 
 End Function
-
-
 

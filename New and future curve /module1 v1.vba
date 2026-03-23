@@ -82,14 +82,31 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Clear old charts/pictures in destination
     '--------------------------------
-    Dim i As Long
-    For i = wsDest.ChartObjects.Count To 1 Step -1
-        wsDest.ChartObjects(i).Delete
-    Next i
+    Dim shp As Shape
+    
+    wsDest.Activate
+    DoEvents
+    
+    If wsDest.ProtectContents Then
+        wsDest.Unprotect ' add password if needed
+    End If
+    
+    For Each shp In wsDest.Shapes
+        On Error Resume Next
+        If shp.Type = msoChart Or shp.Type = msoPicture Then
+            shp.Delete
+        End If
+        On Error GoTo 0
+    Next shp
+    
+     '  Dim i As Long
+    'For i = wsDest.ChartObjects.Count To 1 Step -1
+     '   wsDest.ChartObjects(i).Delete
+    'Next i
 
-    For i = wsDest.Shapes.Count To 1 Step -1
-        If wsDest.Shapes(i).Type = msoPicture Then wsDest.Shapes(i).Delete
-    Next i
+    'For i = wsDest.Shapes.Count To 1 Step -1
+     '   If wsDest.Shapes(i).Type = msoPicture Then wsDest.Shapes(i).Delete
+    'Next i
 
     '--------------------------------
     ' Find TOKYO AREA in origin and destination (dynamic)
@@ -283,5 +300,6 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
+
 
 

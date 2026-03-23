@@ -30,7 +30,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Destination file pattern
     '--------------------------------
-    todayYYMMDD = Format(Sheet1.Range("A3").Value, "yy.mm.dd")
+    todayYYMMDD = Format(Sheet1.Range("A3").value, "yy.mm.dd")
     destPattern = "*Vanir EEX Japan Power Curve_" & todayYYMMDD & "*"
 
     '--------------------------------
@@ -66,8 +66,8 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Get origin/destination sheets (case-insensitive)
     '--------------------------------
-    Set wsOrigin = GetSheetByNameInsensitive(wbOrigin, Sheet1.Range("A10").Value)
-    Set wsDest = GetSheetByNameInsensitive(wbDest, Sheet1.Range("B10").Value)
+    Set wsOrigin = GetSheetByNameInsensitive(wbOrigin, Sheet1.Range("A14").value)
+    Set wsDest = GetSheetByNameInsensitive(wbDest, Sheet1.Range("B14").value)
     
     If wsOrigin Is Nothing Then
         MsgBox "Sheet 'OUTPUT' not found in origin workbook", vbCritical
@@ -94,7 +94,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Find TOKYO AREA in origin and destination (dynamic)
     '--------------------------------
-    Set tokyoCell = wsOrigin.Cells.Find(Sheet1.Range("A7").Value, LookAt:=xlPart)
+    Set tokyoCell = wsOrigin.Cells.Find(Sheet1.Range("A11").value, LookAt:=xlPart)
     If tokyoCell Is Nothing Then
         MsgBox "Tokyo Area header not found in origin sheet", vbCritical
         GoTo ExitSafe
@@ -102,7 +102,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     headerRow = tokyoCell.Row
     startCol = tokyoCell.mergeArea.Column
 
-    Set destTokyoCell = wsDest.Cells.Find(Sheet1.Range("A7").Value, LookAt:=xlPart)
+    Set destTokyoCell = wsDest.Cells.Find(Sheet1.Range("A11").value, LookAt:=xlPart)
     If destTokyoCell Is Nothing Then
         MsgBox "Tokyo Area header not found in destination sheet", vbCritical
         GoTo ExitSafe
@@ -113,7 +113,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Find SPREADS
     '--------------------------------
-    Set spreadsCell = wsOrigin.Cells.Find(Sheet1.Range("B7").Value, LookAt:=xlPart)
+    Set spreadsCell = wsOrigin.Cells.Find(Sheet1.Range("B11").value, LookAt:=xlPart)
     If spreadsCell Is Nothing Then
         MsgBox "Spreads header not found", vbCritical
         GoTo ExitSafe
@@ -160,7 +160,7 @@ Public Sub Import_Old_Japan_Power_Curve()
         CopyRowFast wsOrigin, wsDest, wk3Row, regionStartCol, regionEndCol, destHeaderRow + rowOffset, destStartCol + colOffset
 
         ' DAY CONTRACTS (AREA logic) + red font check
-        If InStr(1, regionCell.Value, "AREA", vbTextCompare) > 0 Then
+        If InStr(1, regionCell.value, "AREA", vbTextCompare) > 0 Then
 
             Dim col1 As Long, col2 As Long, col3 As Long
             Dim contractDate As Date
@@ -170,7 +170,7 @@ Public Sub Import_Old_Japan_Power_Curve()
             col1 = regionEndCol - 2
             col2 = regionEndCol - 1
             col3 = regionEndCol
-            destDate = Sheet1.Range("A3").Value
+            destDate = Sheet1.Range("A3").value
 
             lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, col1).End(xlUp).Row
 
@@ -179,13 +179,13 @@ Public Sub Import_Old_Japan_Power_Curve()
             destColStart = destStartCol + (col1 - startCol)
 
             wsDest.Range(wsDest.Cells(destRowStart, destColStart), _
-                         wsDest.Cells(destRowStart + (lastRow - wk1Row), destColStart + (col3 - col1))).Value = _
-                wsOrigin.Range(wsOrigin.Cells(wk1Row, col1), wsOrigin.Cells(lastRow, col3)).Value
+                         wsDest.Cells(destRowStart + (lastRow - wk1Row), destColStart + (col3 - col1))).value = _
+                wsOrigin.Range(wsOrigin.Cells(wk1Row, col1), wsOrigin.Cells(lastRow, col3)).value
 
             ' Red font only on last col if date condition met, else reset to black
             For r = 0 To wk3Row - wk1Row
-                If IsDate(wsDest.Cells(destRowStart + r, destColStart + 1).Value) Then
-                    contractDate = wsDest.Cells(destRowStart + r, destColStart + 1).Value
+                If IsDate(wsDest.Cells(destRowStart + r, destColStart + 1).value) Then
+                    contractDate = wsDest.Cells(destRowStart + r, destColStart + 1).value
                     If contractDate <= destDate Or contractDate = destDate + 1 Then
                         wsDest.Cells(destRowStart + r, destColStart + 2).Font.Color = RGB(255, 0, 0)
                     Else
@@ -236,8 +236,8 @@ Public Sub Import_Old_Japan_Power_Curve()
             rowOffset = wk3Row + 1 - headerRow
             colOffset = regionStartCol - startCol
             wsDest.Range(wsDest.Cells(destHeaderRow + rowOffset, destStartCol + colOffset), _
-                         wsDest.Cells(destHeaderRow + rowOffset + (lastRow - wk3Row - 1), destStartCol + colOffset + (regionEndCol - regionStartCol))).Value = _
-                wsOrigin.Range(wsOrigin.Cells(wk3Row + 1, regionStartCol), wsOrigin.Cells(lastRow, regionEndCol)).Value
+                         wsDest.Cells(destHeaderRow + rowOffset + (lastRow - wk3Row - 1), destStartCol + colOffset + (regionEndCol - regionStartCol))).value = _
+                wsOrigin.Range(wsOrigin.Cells(wk3Row + 1, regionStartCol), wsOrigin.Cells(lastRow, regionEndCol)).value
         End If
 
     Next regionCell
@@ -262,8 +262,8 @@ Private Sub CopyRowFast(wsSrc As Worksheet, wsDst As Worksheet, _
     If dstRow = 0 Then dstRow = srcRow
     If dstCol = 0 Then dstCol = srcStartCol
 
-    wsDst.Range(wsDst.Cells(dstRow, dstCol), wsDst.Cells(dstRow, dstCol + srcEndCol - srcStartCol)).Value = _
-        wsSrc.Range(wsSrc.Cells(srcRow, srcStartCol), wsSrc.Cells(srcRow, srcEndCol)).Value
+    wsDst.Range(wsDst.Cells(dstRow, dstCol), wsDst.Cells(dstRow, dstCol + srcEndCol - srcStartCol)).value = _
+        wsSrc.Range(wsSrc.Cells(srcRow, srcStartCol), wsSrc.Cells(srcRow, srcEndCol)).value
 
 End Sub
 
@@ -283,4 +283,5 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
+
 

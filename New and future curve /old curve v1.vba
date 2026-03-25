@@ -22,6 +22,29 @@ Public Sub Import_Old_Japan_Power_Curve()
     Dim destTokyoCell As Range
     Dim destHeaderRow As Long, destStartCol As Long
     Dim rowOffset As Long, colOffset As Long
+    
+    Dim wsInput As Worksheet
+    Dim colMap As Object
+    Dim headers As Variant
+    Dim found As Boolean
+    Dim d As Range
+    Dim h As Variant
+    Dim colContract As Long
+    Dim firstDataRow As Long, lastDataRow As Long
+    Dim headerRowInput As Long
+    Dim baseRow As Long
+    
+    Dim valToPaste As Variant
+    Dim key As Variant
+    Dim histKey As String
+    Dim colKey As String
+    
+    Dim histSheet As Worksheet
+    Dim histDateColumn As Long
+    Dim contractColumn As Long
+    Dim targetCell As Range
+    Dim contract As String
+    Dim firstHistRow As Long, lastHistRow As Long
 
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
@@ -68,6 +91,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     Set wsOrigin = GetSheetByNameInsensitive(wbOrigin, Sheet1.Range("A14").value)
     Set wsDest = GetSheetByNameInsensitive(wbDest, Sheet1.Range("B14").value)
+    Set wsInput = GetSheetByNameInsensitive(wbOrigin, "INPUT")
     
     If wsOrigin Is Nothing Then
         MsgBox "Sheet 'OUTPUT' not found in origin workbook", vbCritical
@@ -79,6 +103,11 @@ Public Sub Import_Old_Japan_Power_Curve()
         GoTo ExitSafe
     End If
 
+    If wsInput Is Nothing Then
+        MsgBox "Sheet 'INPUT' not found in origin workbook", vbCritical
+        GoTo ExitSafe
+    End If
+    
     '--------------------------------
     ' Clear old charts/pictures in destination
     '--------------------------------
@@ -258,6 +287,147 @@ Public Sub Import_Old_Japan_Power_Curve()
         End If
 
     Next regionCell
+    
+'========================================================
+    '-------------------------------
+    ' Locate Column Headers
+    '-------------------------------
+    Set colMap = CreateObject("Scripting.Dictionary")
+    headers = Array("TBL", "CBL", "KBL", "TPK", "CPK", "KPK", "TOPK", "COPK", "KOPK")
+    
+  
+    For Each h In headers
+        found = False
+        For Each d In wsInput.UsedRange
+            ' Only consider columns before the stop column
+            If LCase(Trim(d.value)) = LCase(h) Then
+                colMap(h) = d.Column
+                ' Capture headerRow once (first header found)
+                If headerRowInput = 0 Then headerRowInput = d.Row
+                    found = True
+                Exit For
+            End If
+        Next d
+        
+        If Not found Then
+            MsgBox "Column header '" & h & "' not found '", vbCritical
+            Exit Sub
+        End If
+    Next h
+
+    '-------------------------------
+    ' Contract column = column before TBL
+    '-------------------------------
+    colContract = colMap("TBL") - 1
+    If colContract < 1 Then
+        MsgBox "Invalid contract column.", vbCritical
+        Exit Sub
+    End If
+
+    '-------------------------------
+    ' Data range
+    '-------------------------------
+    firstDataRow = headerRowInput + 1
+    lastDataRow = wsInput.Cells(wsInput.Rows.Count, colContract).End(xlUp).Row
+    If lastDataRow < firstDataRow Then
+        MsgBox "No contract data found.", vbCritical
+        Exit Sub
+    End If
+    
+    '-------------------------------
+    ' Display results in MsgBox
+    '-------------------------------
+    Dim msg As String
+    
+    msg = "Header column mapping:" & vbCrLf
+    For Each key In colMap.Keys
+        msg = msg & key & " -> Column " & colMap(key) & vbCrLf
+    Next key
+    
+    msg = msg & "Contract column -> Column " & colContract & vbCrLf
+    msg = msg & "Data rows: " & firstDataRow & " to " & lastDataRow
+    
+    MsgBox msg, vbInformation, "INPUT Sheet Mapping"
+
+'--------------------------------
+' Loop through "Hist" sheets and process the data
+'--------------------------------
+
+
+For Each histSheet In wbDest.Worksheets
+    
+    If InStr(1, histSheet.Name, "Hist", vbTextCompare) = 1 Then
+
+        histDateColumn = FindDateColumnFlexible(histSheet, Format(Sheet1.Range("A3").value, "dd-mmm-yy"))
+
+        If histDateColumn > 0 Then
+
+            lastHistRow = histSheet.Cells(histSheet.Rows.Count, 1).End(xlUp).Row
+
+            For r = 2 To lastHistRow
+                
+                contract = histSheet.Cells(r, 1).value
+                
+                If contract <> "" Then
+                    
+                    Dim normalizedContract As String
+                    normalizedContract = NormalizeContract(contract)
+                    
+                    ' ?? Find in INPUT sheet (NOT origin/output)
+                    Dim i As Long
+                    Dim foundRow As Long
+                    foundRow = 0
+                    
+                    Dim contractDict As Object
+                    Set contractDict = CreateObject("Scripting.Dictionary")
+                    
+                    For i = firstDataRow To lastDataRow
+                        contractDict(NormalizeContract(wsInput.Cells(i, colContract).value)) = i
+                    Next i
+                    
+                    If contractDict.exists(normalizedContract) Then
+                        foundRow = contractDict(normalizedContract)
+                    Else
+                        foundRow = 0
+                    End If
+                    
+                    If foundRow > 0 Then
+                        
+                        ' Example: pulling TBL (you can change to other columns)
+
+                        
+                        colKey = ""
+                        
+                        For Each key In colMap.Keys
+                            If InStr(1, histSheet.Name, key, vbTextCompare) > 0 Then
+                                colKey = key
+                                Exit For
+                            End If
+                        Next key
+                        
+                    If colKey <> "" Then
+                        valToPaste = wsInput.Cells(foundRow, colMap(colKey)).value
+                        Set targetCell = histSheet.Cells(r, histDateColumn)
+                        PasteIfSafe targetCell, valToPaste
+                    End If
+                                            
+                    Else
+                       ' MsgBox "Contract not found in INPUT sheet: " & contract, vbExclamation
+                    End If
+                
+                End If
+                
+            Next r
+        
+        Else
+            MsgBox "No matching date found in sheet: " & histSheet.Name, vbExclamation
+        End If
+    
+    End If
+
+Next histSheet
+
+'================================
 
     wbDest.Save
     MsgBox "Import completed"
@@ -283,7 +453,119 @@ Private Sub CopyRowFast(wsSrc As Worksheet, wsDst As Worksheet, _
         wsSrc.Range(wsSrc.Cells(srcRow, srcStartCol), wsSrc.Cells(srcRow, srcEndCol)).value
 
 End Sub
+' *** FIXED: Flexible date column search ***
+Private Function FindDateColumnFlexible(ws As Worksheet, dateText As String) As Long
+    Dim c As Range
+    ' Try exact match first
+    Set c = ws.Rows(1).Find(dateText, LookIn:=xlValues, LookAt:=xlWhole, MatchCase:=False)
+    If Not c Is Nothing Then
+        FindDateColumnFlexible = c.Column
+        Exit Function
+    End If
+    ' Try partial match
+    Set c = ws.Rows(1).Find(dateText, LookIn:=xlValues, LookAt:=xlPart, MatchCase:=False)
+    If Not c Is Nothing Then FindDateColumnFlexible = c.Column
+End Function
 
+' Helper function to paste safely
+Private Sub PasteIfSafe(targetCell As Range, value As Variant)
+    If Not targetCell.HasFormula And _
+       targetCell.Font.Color <> vbRed And _
+       targetCell.Interior.Color <> RGB(255, 242, 204) And _
+       Not targetCell.EntireRow.Hidden Then
+        targetCell.value = value
+    End If
+End Sub
+Private Function NormalizeContract(val As Variant) As String
+
+    Dim txt As String
+    Dim m As String, y As String
+    
+    If IsEmpty(val) Then Exit Function
+    
+    txt = Trim(CStr(val))
+    If txt = "" Then Exit Function
+    
+    txt = LCase(txt)
+    
+    '-------------------------
+    ' Remove spaces / dashes
+    '-------------------------
+    txt = Replace(txt, " ", "")
+    
+    '-------------------------
+    ' Case 1: Quarter
+    ' Handles Q226 / Q2-26 / Q2 26
+    '-------------------------
+    Dim qtxt As String
+    qtxt = Replace(txt, "-", "")
+    
+    If qtxt Like "q#??" Then
+        NormalizeContract = "Q" & Mid(qtxt, 2, 1) & "-" & Right(qtxt, 2)
+        Exit Function
+    End If
+    
+    '-------------------------
+    ' Case 2: Month text
+    ' Handles Dec26 / Dec-26 / Dec 26
+    '-------------------------
+    Dim clean As String
+    clean = Replace(txt, "-", "")
+    
+    If clean Like "[a-z][a-z][a-z]##" Then
+        m = Left(clean, 3)
+        y = Right(clean, 2)
+        NormalizeContract = UCase(m & "-" & y)
+        Exit Function
+    End If
+    
+    '-------------------------
+    ' Case 3: Real Excel date
+    '-------------------------
+    On Error Resume Next
+    Dim d As Date
+    d = CDate(val)
+    On Error GoTo 0
+    
+    If d <> 0 Then
+        NormalizeContract = UCase(Format(d, "mmm-yy"))
+        Exit Function
+    End If
+    
+    '-------------------------
+    ' Case 4: Leave others
+    '-------------------------
+    NormalizeContract = UCase(txt)
+
+End Function
+' *** NEW: Find contract row in Column A ***
+Private Function FindContractRow(ws As Worksheet, contractName As String) As Long
+
+    Dim lastRow As Long, i As Long
+    Dim cellValue As Variant
+    Dim curveNorm As String, sheetNorm As String
+    
+    curveNorm = NormalizeContract(contractName)
+    
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    
+    For i = 2 To lastRow
+        cellValue = ws.Cells(i, 1).value
+        
+        sheetNorm = NormalizeContract(cellValue)
+        
+        If curveNorm <> "" And sheetNorm <> "" Then
+            If StrComp(curveNorm, sheetNorm, vbTextCompare) = 0 Then
+                FindContractRow = i
+                Exit Function
+            End If
+        End If
+        
+    Next i
+    
+    FindContractRow = 0
+
+End Function
 '============================================================
 ' Helper Function: Get Sheet by Name (Case-Insensitive)
 '============================================================
@@ -300,6 +582,7 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
+
 
 
 

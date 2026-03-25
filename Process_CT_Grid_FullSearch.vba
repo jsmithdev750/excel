@@ -14,7 +14,7 @@ Public Sub Process_CT_Grid_FullSearch()
     Dim headerRow As Long
     
     Dim i As Long
-    Dim r As Long, c As Long
+    Dim r As Long, c As Long, cc As Long
     
     Dim cellValue As String
     Dim parts As Variant
@@ -26,11 +26,18 @@ Public Sub Process_CT_Grid_FullSearch()
     Dim regionCol As Long
     Dim contractRow As Long
     
+    Dim ctFound As Boolean
+    Dim ctRow As Long
+    Dim headerScanLimit As Long
+    Dim contractLastRow As Long
+    
     '-----------------------------------
     ' Setup worksheet
     '-----------------------------------
     Set ws = ThisWorkbook.Sheets("CT GRID Last value")
     
+    ThisWorkbook.RefreshAll
+            
     '-----------------------------------
     ' Detect boundaries
     '-----------------------------------
@@ -38,7 +45,7 @@ Public Sub Process_CT_Grid_FullSearch()
     lastCol = ws.Cells(1, ws.Columns.Count).End(xlToLeft).Column
     
     '-----------------------------------
-    ' STEP 1: Find "Contract" column (ANYWHERE)
+    ' STEP 1: Find "Contract" column
     '-----------------------------------
     contractCol = 0
     
@@ -61,47 +68,34 @@ Public Sub Process_CT_Grid_FullSearch()
     '-----------------------------------
     ' STEP 1.5: Find last row of Contract column
     '-----------------------------------
-    Dim contractLastRow As Long
     contractLastRow = ws.Cells(ws.Rows.Count, contractCol).End(xlUp).Row
     
-    
     '-----------------------------------
-    ' STEP 1.6: Clear CT columns (ONLY after contractCol)
+    ' STEP 1.6: Clear CT columns
     '-----------------------------------
-    Dim ctFound As Boolean
-    Dim ctRow As Long
-    
+    headerScanLimit = Application.WorksheetFunction.Min(10, contractLastRow)
+
     For c = contractCol + 1 To lastCol
         
         ctFound = False
         
-        ' Search down this column for "CT"
-        For r = 1 To contractLastRow
+        For r = 1 To headerScanLimit
             
             If Not IsError(ws.Cells(r, c).Value) Then
-                
                 If InStr(1, CleanText(ws.Cells(r, c).Value), "ct") > 0 Then
-                    
                     ctRow = r
                     ctFound = True
                     Exit For
-                    
                 End If
-                
             End If
             
         Next r
         
-        ' If CT found in this column ? clear below it
         If ctFound Then
-            
             If ctRow < contractLastRow Then
-                
                 ws.Range(ws.Cells(ctRow + 1, c), _
                          ws.Cells(contractLastRow, c)).ClearContents
-                         
             End If
-            
         End If
         
     Next c
@@ -111,32 +105,52 @@ Public Sub Process_CT_Grid_FullSearch()
     '-----------------------------------
     For i = 2 To lastRow
         
-        cellValue = ws.Cells(i, 1).Value
-        cellValue = CleanText(cellValue)
-        
+        cellValue = CleanText(ws.Cells(i, 1).Value)
         If cellValue = "" Then GoTo NextRow
         
         parts = Split(cellValue, " ")
         If UBound(parts) < 2 Then GoTo NextRow
         
+        '-----------------------------------
+        ' FIXED PARSING (ROBUST)
+        '-----------------------------------
+        Dim partCount As Long
+        Dim k As Long
+        
+        partCount = UBound(parts)
+        
+        ' Region
         regionName = parts(0)
-        contractName = parts(1)
-        valueNum = parts(2)
+        
+        ' Value = last non-empty
+        For k = partCount To 0 Step -1
+            If Trim(parts(k)) <> "" Then
+                valueNum = parts(k)
+                Exit For
+            End If
+        Next k
+        
+        ' Contract = middle
+        contractName = ""
+        For k = 1 To partCount
+            If Trim(parts(k)) <> "" And parts(k) <> valueNum Then
+                contractName = contractName & parts(k) & " "
+            End If
+        Next k
+        
+        contractName = CleanText(Trim(contractName))
         
         '-----------------------------------
-        ' STEP 3: Find REGION column (search whole sheet but clean)
+        ' STEP 3: Find REGION column (header only)
         '-----------------------------------
         regionCol = 0
         
-        For r = 1 To lastRow
-            For c = 1 To lastCol
-                If CleanText(ws.Cells(r, c).Value) = regionName Then
-                    regionCol = c
-                    Exit For
-                End If
-            Next c
-            If regionCol <> 0 Then Exit For
-        Next r
+        For cc = contractCol + 1 To lastCol
+            If CleanText(ws.Cells(headerRow, cc).Value) = regionName Then
+                regionCol = cc
+                Exit For
+            End If
+        Next cc
         
         If regionCol = 0 Then
             Debug.Print "Region NOT FOUND: " & regionName
@@ -144,15 +158,31 @@ Public Sub Process_CT_Grid_FullSearch()
         End If
         
         '-----------------------------------
-        ' STEP 4: Find CONTRACT row (FIXED - ONLY search contract column)
+        ' STEP 4: Find CONTRACT row (improved matching)
         '-----------------------------------
         contractRow = 0
         
-        For r = headerRow + 1 To lastRow
-            If CleanText(ws.Cells(r, contractCol).Value) = contractName Then
-                contractRow = r
-                Exit For
+        Dim sheetContract As String
+        Dim normInput As String
+        Dim normSheet As String
+        
+        For r = headerRow + 1 To contractLastRow
+            
+            sheetContract = CleanText(ws.Cells(r, contractCol).Value)
+            
+            If sheetContract <> "" Then
+                
+                ' Normalize (remove "-")
+                normInput = replace(contractName, "-", "")
+                normSheet = replace(sheetContract, "-", "")
+                
+                If normInput = normSheet Then
+                    contractRow = r
+                    Exit For
+                End If
+                
             End If
+            
         Next r
         
         If contractRow = 0 Then
@@ -172,8 +202,9 @@ NextRow:
 
 End Sub
 
+
 '-----------------------------------
-' CLEAN FUNCTION (VERY IMPORTANT)
+' CLEAN FUNCTION
 '-----------------------------------
 Private Function CleanText(ByVal txt As String) As String
     
@@ -182,16 +213,10 @@ Private Function CleanText(ByVal txt As String) As String
         Exit Function
     End If
     
-    ' Remove non-breaking spaces
     txt = replace(txt, Chr(160), " ")
-    
-    ' Remove non-printable characters
     txt = Application.WorksheetFunction.Clean(txt)
-    
-    ' Trim spaces
     txt = Trim(txt)
     
-    ' Normalize multiple spaces
     Do While InStr(txt, "  ") > 0
         txt = replace(txt, "  ", " ")
     Loop
@@ -199,3 +224,4 @@ Private Function CleanText(ByVal txt As String) As String
     CleanText = LCase(txt)
 
 End Function
+

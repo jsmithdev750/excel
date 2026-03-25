@@ -363,7 +363,23 @@ For Each histSheet In wbDest.Worksheets
         If histDateColumn > 0 Then
 
             lastHistRow = histSheet.Cells(histSheet.Rows.Count, 1).End(xlUp).Row
-
+            
+            Dim contractDict As Object
+            Set contractDict = CreateObject("Scripting.Dictionary")
+            
+            Dim i As Long
+            For i = firstDataRow To lastDataRow
+                contractDict(NormalizeContract(wsInput.Cells(i, colContract).value)) = i
+            Next i
+            
+            colKey = ""
+                        
+            For Each key In colMap.Keys
+                If InStr(1, histSheet.Name, key, vbTextCompare) > 0 Then
+                    colKey = key
+                    Exit For
+                End If
+            Next key
             For r = 2 To lastHistRow
                 
                 contract = histSheet.Cells(r, 1).value
@@ -374,16 +390,11 @@ For Each histSheet In wbDest.Worksheets
                     normalizedContract = NormalizeContract(contract)
                     
                     ' ?? Find in INPUT sheet (NOT origin/output)
-                    Dim i As Long
+
                     Dim foundRow As Long
                     foundRow = 0
                     
-                    Dim contractDict As Object
-                    Set contractDict = CreateObject("Scripting.Dictionary")
-                    
-                    For i = firstDataRow To lastDataRow
-                        contractDict(NormalizeContract(wsInput.Cells(i, colContract).value)) = i
-                    Next i
+
                     
                     If contractDict.exists(normalizedContract) Then
                         foundRow = contractDict(normalizedContract)
@@ -395,15 +406,6 @@ For Each histSheet In wbDest.Worksheets
                         
                         ' Example: pulling TBL (you can change to other columns)
 
-                        
-                        colKey = ""
-                        
-                        For Each key In colMap.Keys
-                            If InStr(1, histSheet.Name, key, vbTextCompare) > 0 Then
-                                colKey = key
-                                Exit For
-                            End If
-                        Next key
                         
                     If colKey <> "" Then
                         valToPaste = wsInput.Cells(foundRow, colMap(colKey)).value

@@ -112,14 +112,13 @@ Public Sub Process_CT_Grid_FullSearch()
         If UBound(parts) < 2 Then GoTo NextRow
         
         '-----------------------------------
-        ' FIXED PARSING (ROBUST)
+        ' PARSING
         '-----------------------------------
         Dim partCount As Long
         Dim k As Long
         
         partCount = UBound(parts)
         
-        ' Region
         regionName = parts(0)
         
         ' Value = last non-empty
@@ -138,10 +137,18 @@ Public Sub Process_CT_Grid_FullSearch()
             End If
         Next k
         
-        contractName = CleanText(Trim(contractName))
+        contractName = Trim(contractName)
         
         '-----------------------------------
-        ' STEP 3: Find REGION column (header only)
+        ' FIX: Force Column B as TEXT
+        '-----------------------------------
+        ws.Cells(i, 2).NumberFormat = "@"
+        ws.Cells(i, 2).Value = contractName
+        
+        contractName = CleanText(contractName)
+        
+        '-----------------------------------
+        ' STEP 3: Find REGION column
         '-----------------------------------
         regionCol = 0
         
@@ -158,25 +165,41 @@ Public Sub Process_CT_Grid_FullSearch()
         End If
         
         '-----------------------------------
-        ' STEP 4: Find CONTRACT row (improved matching)
+        ' STEP 4: Find CONTRACT row
         '-----------------------------------
-        contractRow = 0
+        Dim sheetVal As Variant
+        Dim inputDate As Date
+        Dim sheetDate As Date
+        Dim isInputDate As Boolean
+        Dim isSheetDate As Boolean
         
-        Dim sheetContract As String
-        Dim normInput As String
-        Dim normSheet As String
+        contractRow = 0   '<<< CRITICAL RESET
+        
+        isInputDate = TryParseMonthContract(contractName, inputDate)
         
         For r = headerRow + 1 To contractLastRow
             
-            sheetContract = CleanText(ws.Cells(r, contractCol).Value)
+            sheetVal = ws.Cells(r, contractCol).Value
             
-            If sheetContract <> "" Then
+            isSheetDate = False
+            
+            If IsDate(sheetVal) Then
+                sheetDate = CDate(sheetVal)
+                isSheetDate = True
+            Else
+                isSheetDate = TryParseMonthContract(CStr(sheetVal), sheetDate)
+            End If
+            
+            If isInputDate And isSheetDate Then
                 
-                ' Normalize (remove "-")
-                normInput = replace(contractName, "-", "")
-                normSheet = replace(sheetContract, "-", "")
+                If Year(inputDate) = Year(sheetDate) And Month(inputDate) = Month(sheetDate) Then
+                    contractRow = r
+                    Exit For
+                End If
                 
-                If normInput = normSheet Then
+            Else
+                
+                If replace(contractName, "-", "") = replace(CleanText(sheetVal), "-", "") Then
                     contractRow = r
                     Exit For
                 End If
@@ -185,6 +208,9 @@ Public Sub Process_CT_Grid_FullSearch()
             
         Next r
         
+        '-----------------------------------
+        ' FIX: Prevent writing to row 0
+        '-----------------------------------
         If contractRow = 0 Then
             Debug.Print "Contract NOT FOUND: " & contractName
             GoTo NextRow
@@ -222,6 +248,31 @@ Private Function CleanText(ByVal txt As String) As String
     Loop
     
     CleanText = LCase(txt)
+
+End Function
+
+
+'-----------------------------------
+' PARSE MONTH CONTRACT
+'-----------------------------------
+Private Function TryParseMonthContract(ByVal txt As String, ByRef outDate As Date) As Boolean
+    
+    On Error GoTo Fail
+    
+    Dim temp As String
+    
+    temp = CleanText(txt)
+    temp = replace(temp, "-", " ")
+    temp = replace(temp, "sept", "sep")
+    
+    If temp Like "*[a-z][a-z][a-z]* *##" Then
+        outDate = DateValue("1 " & Application.WorksheetFunction.Proper(temp))
+        TryParseMonthContract = True
+        Exit Function
+    End If
+
+Fail:
+    TryParseMonthContract = False
 
 End Function
 

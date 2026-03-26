@@ -17,7 +17,7 @@ End Type
 ' Record type for each transformed row
 '=============================
 Type ContractRecord
-    FullText As String   ' full transformed text (column C)
+    fullText As String   ' full transformed text (column C)
     RegionKey As String  ' parts(0) lowercased & trimmed
     CategoryKey As String
     ContractKey As String
@@ -29,7 +29,7 @@ End Type
 Public Sub MapContractSeasons()
 
     Dim ws As Worksheet
-    Set ws = ThisWorkbook.Sheets("Sheet1")
+    Set ws = ThisWorkbook.Sheets("Run Sorter")
     
     ws.Range("B2:B" & ws.Cells(ws.Rows.Count, "B").End(xlUp).Row).ClearContents
     ws.Range("C2:C" & ws.Cells(ws.Rows.Count, "C").End(xlUp).Row).ClearContents
@@ -95,7 +95,7 @@ Public Sub MapContractSeasons()
         End If
         
         ' Store
-        recs(recIndex).FullText = newText
+        recs(recIndex).fullText = newText
         recs(recIndex).RegionKey = GetPrimaryRegion(parts(0), orderDict)
         recs(recIndex).CategoryKey = GetContractCategory(transformedContract)
         recs(recIndex).ContractKey = GetContractOrderKey(transformedContract)
@@ -125,7 +125,7 @@ NextRow:
     ' Step 3: Output
     '=============================
     For i = 1 To UBound(recs)
-        ws.Cells(i + 1, 3).Value = recs(i).FullText
+        ws.Cells(i + 1, 3).Value = recs(i).fullText
     Next i
     
     MsgBox "Done! Sorted by Region, Category, and Contract Order.", vbInformation
@@ -164,7 +164,7 @@ If co1 > co2 Then
     temp = recs(i): recs(i) = recs(j): recs(j) = temp
 
 ElseIf co1 = co2 Then
-    If CompareContractWithinType(recs(i).FullText, recs(j).FullText) > 0 Then
+    If CompareContractWithinType(recs(i).fullText, recs(j).fullText, contractDict) > 0 Then
         temp = recs(i): recs(i) = recs(j): recs(j) = temp
     End If
 End If
@@ -626,17 +626,75 @@ Function GetContractOrderKey(contract As String) As String
     GetContractOrderKey = firstPart
 End Function
 
-
-Function CompareContractWithinType(c1 As String, c2 As String) As Long
+Function CompareContractWithinType(c1 As String, c2 As String, contractDict As Object) As Long
     
-    Dim v1 As Double, v2 As Double
+    Dim con1 As String, con2 As String
+    Dim leg1a As String, leg1b As String
+    Dim leg2a As String, leg2b As String
     
-    v1 = GetIntraTypeValue(c1)
-    v2 = GetIntraTypeValue(c2)
+    Dim type1a As Long, type2a As Long
+    Dim type1b As Long, type2b As Long
     
-    If v1 > v2 Then
+    Dim v1a As Double, v2a As Double
+    Dim v1b As Double, v2b As Double
+    
+    '===========================
+    ' Extract contract
+    '===========================
+    con1 = ExtractContractPart(c1)
+    con2 = ExtractContractPart(c2)
+    
+    '===========================
+    ' Split legs
+    '===========================
+    SplitLegs con1, leg1a, leg1b
+    SplitLegs con2, leg2a, leg2b
+    
+    '===========================
+    ' FIRST LEG — TYPE PRIORITY (FROM DICT ?)
+    '===========================
+    type1a = GetOrderIndex(LCase(GetContractOrderKey(leg1a)), contractDict)
+    type2a = GetOrderIndex(LCase(GetContractOrderKey(leg2a)), contractDict)
+    
+    If type1a > type2a Then
+        CompareContractWithinType = 1: Exit Function
+    ElseIf type1a < type2a Then
+        CompareContractWithinType = -1: Exit Function
+    End If
+    
+    '===========================
+    ' FIRST LEG — VALUE
+    '===========================
+    v1a = GetIntraTypeValue(leg1a)
+    v2a = GetIntraTypeValue(leg2a)
+    
+    If v1a > v2a Then
+        CompareContractWithinType = 1: Exit Function
+    ElseIf v1a < v2a Then
+        CompareContractWithinType = -1: Exit Function
+    End If
+    
+    '===========================
+    ' SECOND LEG — TYPE PRIORITY (FIXED ??)
+    '===========================
+    type1b = GetOrderIndex(LCase(GetContractOrderKey(leg1b)), contractDict)
+    type2b = GetOrderIndex(LCase(GetContractOrderKey(leg2b)), contractDict)
+    
+    If type1b > type2b Then
+        CompareContractWithinType = 1: Exit Function
+    ElseIf type1b < type2b Then
+        CompareContractWithinType = -1: Exit Function
+    End If
+    
+    '===========================
+    ' SECOND LEG — VALUE
+    '===========================
+    v1b = GetIntraTypeValue(leg1b)
+    v2b = GetIntraTypeValue(leg2b)
+    
+    If v1b > v2b Then
         CompareContractWithinType = 1
-    ElseIf v1 < v2 Then
+    ElseIf v1b < v2b Then
         CompareContractWithinType = -1
     Else
         CompareContractWithinType = 0
@@ -737,4 +795,27 @@ End If
     GetIntraTypeValue = 0
 
 End Function
+Private Sub SplitLegs(contract As String, ByRef legA As String, ByRef legB As String)
+    
+    If InStr(contract, "/") > 0 Then
+        legA = Trim(Split(contract, "/")(0))
+        legB = Trim(Split(contract, "/")(1))
+    Else
+        legA = contract
+        legB = ""
+    End If
 
+End Sub
+Function ExtractContractPart(fullText As String) As String
+    
+    Dim parts() As String
+    
+    parts = Split(fullText, " ")
+    
+    If UBound(parts) >= 1 Then
+        ExtractContractPart = parts(1)
+    Else
+        ExtractContractPart = ""
+    End If
+
+End Function

@@ -5,7 +5,7 @@ Option Explicit
 Public Sub Import_Old_Japan_Power_Curve()
 
     Dim wbOrigin As Workbook, wbDest As Workbook
-    Dim wsOrigin As Worksheet, wsDest As Worksheet
+    Dim wsOrigin As Worksheet, wsDest As Worksheet, wsWeekday As Worksheet
     Dim tokyoCell As Range, spreadsCell As Range
     Dim headerRow As Long
     Dim startCol As Long, endCol As Long
@@ -92,6 +92,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     Set wsOrigin = GetSheetByNameInsensitive(wbOrigin, Sheet1.Range("A14").value)
     Set wsDest = GetSheetByNameInsensitive(wbDest, Sheet1.Range("B14").value)
     Set wsInput = GetSheetByNameInsensitive(wbOrigin, "INPUT")
+    Set wsWeekday = GetSheetByNameInsensitive(wbOrigin, "WEEKS_DAYS")
     
     If wsOrigin Is Nothing Then
         MsgBox "Sheet 'OUTPUT' not found in origin workbook", vbCritical
@@ -105,6 +106,11 @@ Public Sub Import_Old_Japan_Power_Curve()
 
     If wsInput Is Nothing Then
         MsgBox "Sheet 'INPUT' not found in origin workbook", vbCritical
+        GoTo ExitSafe
+    End If
+
+    If wsWeekday Is Nothing Then
+        MsgBox "Sheet 'WEEKS_DAYS' not found in origin workbook", vbCritical
         GoTo ExitSafe
     End If
     
@@ -145,7 +151,7 @@ Public Sub Import_Old_Japan_Power_Curve()
         MsgBox "Tokyo Area header not found in origin sheet", vbCritical
         GoTo ExitSafe
     End If
-    headerRow = tokyoCell.Row
+    headerRow = tokyoCell.row
     startCol = tokyoCell.mergeArea.Column
 
     Set destTokyoCell = wsDest.Cells.Find(Sheet1.Range("A11").value, LookAt:=xlPart)
@@ -153,7 +159,7 @@ Public Sub Import_Old_Japan_Power_Curve()
         MsgBox "Tokyo Area header not found in destination sheet", vbCritical
         GoTo ExitSafe
     End If
-    destHeaderRow = destTokyoCell.Row
+    destHeaderRow = destTokyoCell.row
     destStartCol = destTokyoCell.mergeArea.Column
 
     '--------------------------------
@@ -218,7 +224,7 @@ Public Sub Import_Old_Japan_Power_Curve()
             col3 = regionEndCol
             destDate = Sheet1.Range("A3").value
 
-            lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, col1).End(xlUp).Row
+            lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, col1).End(xlUp).row
 
             ' Dynamic paste destination
             destRowStart = destHeaderRow + (wk1Row - headerRow)
@@ -277,7 +283,7 @@ Public Sub Import_Old_Japan_Power_Curve()
         End If
 
         ' REMAINING CONTRACTS
-        lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, regionStartCol).End(xlUp).Row
+        lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, regionStartCol).End(xlUp).row
         If lastRow > wk3Row Then
             rowOffset = wk3Row + 1 - headerRow
             colOffset = regionStartCol - startCol
@@ -295,7 +301,6 @@ Public Sub Import_Old_Japan_Power_Curve()
     Set colMap = CreateObject("Scripting.Dictionary")
     headers = Array("TBL", "CBL", "KBL", "TPK", "CPK", "KPK", "TOPK", "COPK", "KOPK")
     
-  
     For Each h In headers
         found = False
         For Each d In wsInput.UsedRange
@@ -303,7 +308,7 @@ Public Sub Import_Old_Japan_Power_Curve()
             If LCase(Trim(d.value)) = LCase(h) Then
                 colMap(h) = d.Column
                 ' Capture headerRow once (first header found)
-                If headerRowInput = 0 Then headerRowInput = d.Row
+                If headerRowInput = 0 Then headerRowInput = d.row
                     found = True
                 Exit For
             End If
@@ -314,6 +319,110 @@ Public Sub Import_Old_Japan_Power_Curve()
             Exit Sub
         End If
     Next h
+
+
+'==================================
+' WEEK DAY
+    Dim colWeekDayMap As Object
+    Dim headersWeekDay As Variant
+    Dim foundWeekDay As Boolean
+    Dim d1 As Range
+    Dim h1 As Variant
+    Dim colContractBL As Long, colContractPK As Long
+    Dim firstDataRowBL As Long, lastDataRowBL As Long
+    Dim firstDataRowPK As Long, lastDataRowPK As Long
+    Dim headerRowInputWeekDay As Long
+    Dim baseRow1 As Long
+    
+    Set colWeekDayMap = CreateObject("Scripting.Dictionary")
+    headersWeekDay = Array("TBL", "CBL", "KBL", "TPK", "CPK", "KPK")
+    
+    For Each h1 In headersWeekDay
+        foundWeekDay = False
+        For Each d1 In wsWeekday.UsedRange
+            ' Only consider columns before the stop column
+            If LCase(Trim(d1.value)) = LCase(h1) Then
+                colWeekDayMap(h1) = d1.Column
+                ' Capture headerRow once (first header found)
+                If headerRowInputWeekDay = 0 Then headerRowInputWeekDay = d1.row
+                    foundWeekDay = True
+                Exit For
+            End If
+        Next d1
+        
+        If Not foundWeekDay Then
+            MsgBox "Column header '" & h1 & "' not found '", vbCritical
+            Exit Sub
+        End If
+    Next h1
+    
+    '-------------------------------
+    ' Contract column = column before TBL
+    '-------------------------------
+    colContractBL = colWeekDayMap("TBL") - 1
+    If colContractBL < 1 Then
+        MsgBox "Invalid contract column.", vbCritical
+        Exit Sub
+    End If
+    
+    colContractPK = colWeekDayMap("TPK") - 1
+    If colContractPK < 1 Then
+        MsgBox "Invalid contract column.", vbCritical
+        Exit Sub
+    End If
+    
+    '-------------------------------
+    ' Data range -  BL
+    '-------------------------------
+    firstDataRowBL = headerRowInputWeekDay + 1
+    lastDataRowBL = wsWeekday.Cells(wsWeekday.Rows.Count, colContractBL).End(xlUp).row
+    If lastDataRowBL < firstDataRowBL Then
+        MsgBox "No contract data found.", vbCritical
+        Exit Sub
+    End If
+    
+    '-------------------------------
+    ' Data range -  PK
+    '-------------------------------
+    firstDataRowPK = headerRowInputWeekDay + 1
+    lastDataRowPK = wsWeekday.Cells(wsWeekday.Rows.Count, colContractPK).End(xlUp).row
+    If lastDataRowPK < firstDataRowPK Then
+        MsgBox "No contract data found.", vbCritical
+        Exit Sub
+    End If
+    
+    '-------------------------------
+    ' Display results in MsgBox
+    '-------------------------------
+    'Dim msg1 As String
+    
+   ' msg1 = "Header column mapping:" & vbCrLf
+    'For Each key In colWeekDayMap.Keys
+     '   msg1 = msg1 & key & " -> Column " & colWeekDayMap(key) & vbCrLf
+    'Next key
+    
+    'msg1 = msg1 & "Contract column -> Column " & colContractBL & vbCrLf
+    'msg1 = msg1 & "Data rows: " & firstDataRowBL & " to " & lastDataRowBL
+    
+    'MsgBox msg1, vbInformation, "bl Sheet Mapping"
+    
+    
+    '-------------------------------
+    ' Display results in MsgBox
+    '-------------------------------
+    'Dim msg2 As String
+    
+   ' msg2 = "Header column mapping:" & vbCrLf
+    'For Each key In colWeekDayMap.Keys
+     '   msg2 = msg2 & key & " -> Column " & colWeekDayMap(key) & vbCrLf
+    'Next key
+    
+    'msg2 = msg2 & "Contract column -> Column " & colContractPK & vbCrLf
+    'msg2 = msg2 & "Data rows: " & firstDataRowPK & " to " & lastDataRowPK
+    
+    'MsgBox msg2, vbInformation, "pk Sheet Mapping"
+    
+'===========================
 
     '-------------------------------
     ' Contract column = column before TBL
@@ -328,7 +437,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     ' Data range
     '-------------------------------
     firstDataRow = headerRowInput + 1
-    lastDataRow = wsInput.Cells(wsInput.Rows.Count, colContract).End(xlUp).Row
+    lastDataRow = wsInput.Cells(wsInput.Rows.Count, colContract).End(xlUp).row
     If lastDataRow < firstDataRow Then
         MsgBox "No contract data found.", vbCritical
         Exit Sub
@@ -337,23 +446,21 @@ Public Sub Import_Old_Japan_Power_Curve()
     '-------------------------------
     ' Display results in MsgBox
     '-------------------------------
-    Dim msg As String
+    'Dim msg As String
     
-    msg = "Header column mapping:" & vbCrLf
-    For Each key In colMap.Keys
-        msg = msg & key & " -> Column " & colMap(key) & vbCrLf
-    Next key
+    'msg = "Header column mapping:" & vbCrLf
+    'For Each key In colMap.Keys
+        'msg = msg & key & " -> Column " & colMap(key) & vbCrLf
+    'Next key
     
-    msg = msg & "Contract column -> Column " & colContract & vbCrLf
-    msg = msg & "Data rows: " & firstDataRow & " to " & lastDataRow
+    'msg = msg & "Contract column -> Column " & colContract & vbCrLf
+    'msg = msg & "Data rows: " & firstDataRow & " to " & lastDataRow
     
-    MsgBox msg, vbInformation, "INPUT Sheet Mapping"
+    'MsgBox msg, vbInformation, "INPUT Sheet Mapping"
 
 '--------------------------------
 ' Loop through "Hist" sheets and process the data
 '--------------------------------
-
-
 For Each histSheet In wbDest.Worksheets
     
     If InStr(1, histSheet.Name, "Hist", vbTextCompare) = 1 Then
@@ -362,14 +469,49 @@ For Each histSheet In wbDest.Worksheets
 
         If histDateColumn > 0 Then
 
-            lastHistRow = histSheet.Cells(histSheet.Rows.Count, 1).End(xlUp).Row
+            lastHistRow = histSheet.Cells(histSheet.Rows.Count, 1).End(xlUp).row
+
+'--------------------------------
+' Find "DAYS" section row
+'--------------------------------
+Dim iFind As Long
+Dim daysStartRow As Long
+daysStartRow = 0
+
+daysStartRow = 0
+
+Dim daysCell As Range
+
+Set daysCell = histSheet.Columns(1).Find("DAYS", LookAt:=xlWhole, MatchCase:=False)
+
+If Not daysCell Is Nothing Then
+    daysStartRow = daysCell.row
+End If
+
+' Only enforce DAYS section for restricted sheets
+If IsDayRestrictedSheet(histSheet.Name) Then
+    If daysStartRow = 0 Then
+        MsgBox "'DAYS' section not found in sheet: " & histSheet.Name, vbCritical
+        Exit Sub
+    End If
+End If
             
-            Dim contractDict As Object
+            Dim contractDict As Object, contractDictBL As Object, contractDictPk As Object
             Set contractDict = CreateObject("Scripting.Dictionary")
+            Set contractDictBL = CreateObject("Scripting.Dictionary")
+            Set contractDictPk = CreateObject("Scripting.Dictionary")
             
             Dim i As Long
             For i = firstDataRow To lastDataRow
-                contractDict(NormalizeContract(wsInput.Cells(i, colContract).value)) = i
+                contractDict(NormalizeContract(wsInput.Cells(i, colContract))) = i
+            Next i
+            
+            For i = firstDataRowBL To lastDataRowBL
+                contractDictBL(NormalizeContract(wsWeekday.Cells(i, colContractBL))) = i
+            Next i
+            
+            For i = firstDataRowPK To lastDataRowPK
+                contractDictPk(NormalizeContract(wsWeekday.Cells(i, colContractPK))) = i
             Next i
             
             colKey = ""
@@ -380,6 +522,16 @@ For Each histSheet In wbDest.Worksheets
                     Exit For
                 End If
             Next key
+            
+            If colKey = "" Then
+                For Each key In colWeekDayMap.Keys
+                    If InStr(1, histSheet.Name, key, vbTextCompare) > 0 Then
+                        colKey = key
+                        Exit For
+                    End If
+                Next key
+            End If
+            
             For r = 2 To lastHistRow
                 
                 contract = histSheet.Cells(r, 1).value
@@ -389,36 +541,48 @@ For Each histSheet In wbDest.Worksheets
                     Dim normalizedContract As String
                     normalizedContract = NormalizeContract(contract)
                     
-                    ' ?? Find in INPUT sheet (NOT origin/output)
-
+                    Dim sourceType As String
                     Dim foundRow As Long
-                    foundRow = 0
                     
-
+                    foundRow = 0
+                    sourceType = ""
+                    
                     
                     If contractDict.exists(normalizedContract) Then
                         foundRow = contractDict(normalizedContract)
-                    Else
-                        foundRow = 0
+                        sourceType = "INPUT"
+                    
+                    ElseIf contractDictBL.exists(normalizedContract) Then
+                        foundRow = contractDictBL(normalizedContract)
+                        sourceType = "BL"
+                    
+                    ElseIf contractDictPk.exists(normalizedContract) Then
+                        foundRow = contractDictPk(normalizedContract)
+                        sourceType = "PK"
                     End If
                     
-                    If foundRow > 0 Then
+                    If foundRow > 0 And colKey <> "" Then
+                        If sourceType = "INPUT" Then
+                            If daysStartRow > 0 Then
+                                If r >= daysStartRow Then GoTo SkipRow
+                            End If
+                        End If
                         
-                        ' Example: pulling TBL (you can change to other columns)
-
-                        
-                    If colKey <> "" Then
-                        valToPaste = wsInput.Cells(foundRow, colMap(colKey)).value
+                        Select Case sourceType
+                            Case "INPUT"
+                                valToPaste = wsInput.Cells(foundRow, colMap(colKey)).value
+                    
+                            Case "BL", "PK"
+                                valToPaste = wsWeekday.Cells(foundRow, colWeekDayMap(colKey)).value
+                        End Select
+                    
                         Set targetCell = histSheet.Cells(r, histDateColumn)
                         PasteIfSafe targetCell, valToPaste
-                    End If
-                                            
-                    Else
-                       ' MsgBox "Contract not found in INPUT sheet: " & contract, vbExclamation
+                    
                     End If
                 
                 End If
-                
+SkipRow:
             Next r
         
         Else
@@ -522,15 +686,21 @@ Private Function NormalizeContract(val As Variant) As String
     End If
     
     '-------------------------
-    ' Case 3: Real Excel date
+    ' Case 3: Excel dates
     '-------------------------
-    On Error Resume Next
     Dim d As Date
-    d = CDate(val)
-    On Error GoTo 0
-    
-    If d <> 0 Then
-        NormalizeContract = UCase(Format(d, "mmm-yy"))
+    If IsDate(val) Then
+
+        d = CDate(val)
+
+        If Day(d) = 1 Then
+            ' Monthly contract
+            NormalizeContract = UCase(Format(d, "mmm-yy"))
+        Else
+            ' Daily contract
+            NormalizeContract = UCase(Format(d, "dd-mmm-yy"))
+        End If
+
         Exit Function
     End If
     
@@ -539,8 +709,7 @@ Private Function NormalizeContract(val As Variant) As String
     '-------------------------
     NormalizeContract = UCase(txt)
 
-End Function
-' *** NEW: Find contract row in Column A ***
+End Function ' *** NEW: Find contract row in Column A ***
 Private Function FindContractRow(ws As Worksheet, contractName As String) As Long
 
     Dim lastRow As Long, i As Long
@@ -549,7 +718,7 @@ Private Function FindContractRow(ws As Worksheet, contractName As String) As Lon
     
     curveNorm = NormalizeContract(contractName)
     
-    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+    lastRow = ws.Cells(ws.Rows.Count, 1).End(xlUp).row
     
     For i = 2 To lastRow
         cellValue = ws.Cells(i, 1).value
@@ -585,6 +754,18 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
     Next ws
 End Function
 
+Private Function IsDayRestrictedSheet(sheetName As String) As Boolean
+    
+    Dim arr As Variant
+    Dim i As Long
+    
+    arr = Array("TBL", "CBL", "KBL", "TPK", "CPK", "KPK")
+    
+    For i = LBound(arr) To UBound(arr)
+        If InStr(1, sheetName, arr(i), vbTextCompare) > 0 Then
+            IsDayRestrictedSheet = True
+            Exit Function
+        End If
+    Next i
 
-
-
+End Function

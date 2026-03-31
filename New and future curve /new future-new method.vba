@@ -15,6 +15,14 @@ Public Sub Import_Old_Japan_Power_Curve()
     Dim wk1Row As Long, wk2Row As Long, wk3Row As Long
     Dim C As Long, r As Long, lastRow As Long
     
+    Dim todayDate As String
+    Dim originSheetName As String
+    Dim destSheetName As String
+    Dim originSearchHeader As String
+    Dim destSearchHeader As String
+    Dim originSheetNameInput As String
+    Dim originSheetNameWeekDay As String
+    
     Dim todayYYMMDD As String
     Dim destPattern As String
     Dim wb As Workbook
@@ -50,10 +58,21 @@ Public Sub Import_Old_Japan_Power_Curve()
     Application.Calculation = xlCalculationManual
     Application.EnableEvents = False
 
+
+    ' Settings
+    todayDate = Sheet1.Range("A3").value
+    originSheetName = Sheet1.Range("A14").value
+    destSheetName = Sheet1.Range("B14").value
+    originSearchHeader = Sheet1.Range("A11").value
+    destSearchHeader = Sheet1.Range("B11").value
+    originSheetNameInput = Sheet1.Range("A15").value
+    originSheetNameWeekDay = Sheet1.Range("A16").value
+    
+    
     '--------------------------------
     ' Destination file pattern
     '--------------------------------
-    todayYYMMDD = Format(Sheet1.Range("A3").value, "yy.mm.dd")
+    todayYYMMDD = Format(todayDate, "yy.mm.dd")
     destPattern = "*Vanir EEX Japan Power Curve_" & todayYYMMDD & "*"
 
     '--------------------------------
@@ -89,10 +108,10 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Get origin/destination sheets (case-insensitive)
     '--------------------------------
-    Set wsOrigin = GetSheetByNameInsensitive(wbOrigin, Sheet1.Range("A14").value)
-    Set wsDest = GetSheetByNameInsensitive(wbDest, Sheet1.Range("B14").value)
-    Set wsInput = GetSheetByNameInsensitive(wbOrigin, "INPUT")
-    Set wsWeekday = GetSheetByNameInsensitive(wbOrigin, "WEEKS_DAYS")
+    Set wsOrigin = GetSheetByNameInsensitive(wbOrigin, originSheetName)
+    Set wsDest = GetSheetByNameInsensitive(wbDest, destSheetName)
+    Set wsInput = GetSheetByNameInsensitive(wbOrigin, originSheetNameInput)
+    Set wsWeekday = GetSheetByNameInsensitive(wbOrigin, originSheetNameWeekDay)
     
     If wsOrigin Is Nothing Then
         MsgBox "Sheet 'OUTPUT' not found in origin workbook", vbCritical
@@ -146,7 +165,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Find TOKYO AREA in origin and destination (dynamic)
     '--------------------------------
-    Set tokyoCell = wsOrigin.Cells.Find(Sheet1.Range("A11").value, LookAt:=xlPart)
+    Set tokyoCell = wsOrigin.Cells.Find(originSearchHeader, LookAt:=xlPart)
     If tokyoCell Is Nothing Then
         MsgBox "Tokyo Area header not found in origin sheet", vbCritical
         GoTo ExitSafe
@@ -154,7 +173,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     headerRow = tokyoCell.row
     startCol = tokyoCell.mergeArea.Column
 
-    Set destTokyoCell = wsDest.Cells.Find(Sheet1.Range("A11").value, LookAt:=xlPart)
+    Set destTokyoCell = wsDest.Cells.Find(originSearchHeader, LookAt:=xlPart)
     If destTokyoCell Is Nothing Then
         MsgBox "Tokyo Area header not found in destination sheet", vbCritical
         GoTo ExitSafe
@@ -165,7 +184,7 @@ Public Sub Import_Old_Japan_Power_Curve()
     '--------------------------------
     ' Find SPREADS
     '--------------------------------
-    Set spreadsCell = wsOrigin.Cells.Find(Sheet1.Range("B11").value, LookAt:=xlPart)
+    Set spreadsCell = wsOrigin.Cells.Find(destSearchHeader, LookAt:=xlPart)
     If spreadsCell Is Nothing Then
         MsgBox "Spreads header not found", vbCritical
         GoTo ExitSafe
@@ -222,7 +241,7 @@ Public Sub Import_Old_Japan_Power_Curve()
             col1 = regionEndCol - 2
             col2 = regionEndCol - 1
             col3 = regionEndCol
-            destDate = Sheet1.Range("A3").value
+            destDate = todayDate
 
             lastRow = wsOrigin.Cells(wsOrigin.Rows.Count, col1).End(xlUp).row
 
@@ -465,7 +484,7 @@ For Each histSheet In wbDest.Worksheets
     
     If InStr(1, histSheet.Name, "Hist", vbTextCompare) = 1 Then
 
-        histDateColumn = FindDateColumnFlexible(histSheet, Format(Sheet1.Range("A3").value, "dd-mmm-yy"))
+        histDateColumn = FindDateColumnFlexible(histSheet, Format(todayDate, "dd-mmm-yy"))
 
         If histDateColumn > 0 Then
 
@@ -580,7 +599,7 @@ End If
                     
                         Set targetCell = histSheet.Cells(r, histDateColumn)
                         PasteIfSafe targetCell, valToPaste
-                        
+                        ' Set red font if date id <= today +1 / today +1
                         If daysStartRow > 0 And r > daysStartRow Then
                             If IsDate(contract) Then
                                 If Int(CDate(contract)) <= Int(destDate) + 1 Then
@@ -619,7 +638,6 @@ ExitSafe:
     Application.EnableEvents = True
 
 End Sub
-
 '--------------------------------
 ' Fast row copy (no cell loops)
 '--------------------------------
@@ -730,7 +748,7 @@ Private Function NormalizeContract(val As Variant, Optional daysRow As Long, Opt
     '-------------------------
     NormalizeContract = UCase(txt)
 
-End Function ' *** NEW: Find contract row in Column A ***
+End Function
 Private Function FindContractRow(ws As Worksheet, contractName As String) As Long
 
     Dim lastRow As Long, i As Long
@@ -774,7 +792,9 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
-
+'============================================================
+' Helper Function: To check this few sheets have the word DAYS
+'============================================================
 Private Function IsDayRestrictedSheet(sheetName As String) As Boolean
     
     Dim arr As Variant

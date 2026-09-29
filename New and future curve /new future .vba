@@ -70,10 +70,11 @@ Public Sub Import_New_Japan_Power_Curve()
     Dim wkParts() As String
     Dim wkNum As Long
 
+
     '-------------------------------
     ' File naming convention
     '-------------------------------
-    todayDDMMYY = Sheet1.Range("A3").Value
+    todayDDMMYY = Sheet1.Range("A3").value
     todayYYMMDD = Format(todayDDMMYY, "yy.mm.dd")
 
     '-------------------------------
@@ -111,6 +112,8 @@ Public Sub Import_New_Japan_Power_Curve()
         MsgBox "Destination workbook is not open!" & vbCrLf & "Expected pattern: " & destPattern, vbCritical
         Exit Sub
     End If
+    
+    
 
     '-------------------------------
     ' Resolve Sheets
@@ -123,16 +126,16 @@ Public Sub Import_New_Japan_Power_Curve()
         MsgBox "One or more required sheets not found.", vbCritical
         Exit Sub
     End If
-    
+
     '-------------------------------
     ' Determine Stop Column based on A7 (entire sheet)
     '-------------------------------
-    stopWord = Trim(Sheet1.Range("A7").Value)
+    stopWord = Trim(Sheet1.Range("A7").value)
     stopCol = 0
     
     Dim stopCell As Range
     For Each stopCell In wsCurve.UsedRange
-        If LCase(Trim(stopCell.Value)) = LCase(stopWord) Then
+        If LCase(Trim(stopCell.value)) = LCase(stopWord) Then
             stopCol = stopCell.Column
             Exit For
         End If
@@ -142,6 +145,9 @@ Public Sub Import_New_Japan_Power_Curve()
         MsgBox "Stop word '" & stopWord & "' not found anywhere WB-Simple Version.", vbCritical
         Exit Sub
     End If
+    
+    Dim frozenRow As Long, frozenCol As Long
+
 
     '-------------------------------
     ' Locate Column Headers
@@ -154,8 +160,9 @@ Public Sub Import_New_Japan_Power_Curve()
         found = False
         For Each c In wsCurve.UsedRange
             ' Only consider columns before the stop column
+           
             If c.Column < stopCol Then
-                If LCase(Trim(c.Value)) = LCase(h) Then
+                If LCase(Trim(c.value)) = LCase(h) Then
                     colMap(h) = c.Column
                     ' Capture headerRow once (first header found)
                     If headerRow = 0 Then headerRow = c.Row
@@ -179,17 +186,31 @@ Public Sub Import_New_Japan_Power_Curve()
         MsgBox "Invalid contract column.", vbCritical
         Exit Sub
     End If
-
+    
 
     '-------------------------------
     ' Data range
     '-------------------------------
     firstDataRow = headerRow + 1
-    lastDataRow = wsCurve.Cells(wsCurve.Rows.Count, colContract).End(xlUp).Row
+    'For speed can use this but must make sure last row is legit last else will include in between blanks rows
+    'lastDataRow = wsCurve.Cells(wsCurve.Rows.Count, colContract).End(xlUp).Row
+    
+    For r = firstDataRow To wsCurve.Rows.Count
+        If Trim(wsCurve.Cells(r, colContract).value) = "" Then
+            ' stop at first blank
+            Exit For
+        Else
+            lastDataRow = r
+        End If
+    Next r
+
+    
     If lastDataRow < firstDataRow Then
         MsgBox "No contract data found.", vbCritical
         Exit Sub
     End If
+    
+
 
     '-------------------------------
     ' Paste order & product mapping
@@ -219,7 +240,7 @@ Public Sub Import_New_Japan_Power_Curve()
     With wsMarks
         .Columns(1).NumberFormat = "dd mmm yyyy"
         .Columns(2).NumberFormat = "General"
-        .Columns(3).NumberFormat = "mmm-yy"
+        .Columns(3).NumberFormat = "[$-en-US]mmm-yy"
         .Columns(4).NumberFormat = "0.00"
         .Columns(5).NumberFormat = "0.00"
     End With
@@ -232,8 +253,8 @@ Public Sub Import_New_Japan_Power_Curve()
     lastCol = wsCurve.Cells(headerRow, wsCurve.Columns.Count).End(xlToLeft).Column
     For cStop = 1 To lastCol
         Set cell = wsCurve.Cells(headerRow, cStop)
-        If LCase(Trim(cell.Value)) = "paste previous day" Then pastePrevCol = cStop
-        If LCase(Trim(cell.Value)) = "check test" Then checkTestCol = cStop
+        If LCase(Trim(cell.value)) = "paste previous day" Then pastePrevCol = cStop
+        If LCase(Trim(cell.value)) = "check test" Then checkTestCol = cStop
     Next cStop
 
     '-------------------------------
@@ -252,18 +273,21 @@ Public Sub Import_New_Japan_Power_Curve()
             startRow = hdrCell.Row + 1
 
             For rDay = startRow To startRow + 13
-                dayMark = wsWD.Cells(rDay, "F").Value
-                dayContract = wsWD.Cells(rDay, "E").Value
+                dayMark = wsWD.Cells(rDay, "F").value
+                dayContract = wsWD.Cells(rDay, "E").value
 
-                wsMarks.Cells(destRow, 1).Value = todayDDMMYY
-                wsMarks.Cells(destRow, 2).Value = productMap(key)
+                wsMarks.Cells(destRow, 1).value = todayDDMMYY
+                wsMarks.Cells(destRow, 2).value = productMap(key)
                 If IsDate(dayContract) Then
-                    wsMarks.Cells(destRow, 3).Value = "D" & Format(Day(dayContract), "00") & "-" & Format(dayContract, "Mmm-yy")
+                    wsMarks.Cells(destRow, 3).value = "D" & Format(Day(dayContract), "00") & "-" & _
+                    Choose(Month(dayContract), "Jan", "Feb", "Mar", "Apr", "May", "Jun", _
+                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec") & "-" & _
+                    Right(CStr(Year(dayContract)), 2)
                 Else
-                    wsMarks.Cells(destRow, 3).Value = dayContract
+                    wsMarks.Cells(destRow, 3).value = dayContract
                 End If
-                wsMarks.Cells(destRow, 4).Value = dayMark
-                wsMarks.Cells(destRow, 5).Value = ""
+                wsMarks.Cells(destRow, 4).value = dayMark
+                wsMarks.Cells(destRow, 5).value = ""
                 destRow = destRow + 1
             Next rDay
         End If
@@ -279,18 +303,21 @@ Public Sub Import_New_Japan_Power_Curve()
             startRowP = hdrCellP.Row + 1
 
             For rDayP = startRowP To startRowP + 13
-                dayMarkP = wsWD.Cells(rDayP, "H").Value
-                dayContractP = wsWD.Cells(rDayP, "E").Value
+                dayMarkP = wsWD.Cells(rDayP, "H").value
+                dayContractP = wsWD.Cells(rDayP, "E").value
 
-                wsMarks.Cells(destRow, 1).Value = todayDDMMYY
-                wsMarks.Cells(destRow, 2).Value = productMap(key)
+                wsMarks.Cells(destRow, 1).value = todayDDMMYY
+                wsMarks.Cells(destRow, 2).value = productMap(key)
                 If IsDate(dayContractP) Then
-                    wsMarks.Cells(destRow, 3).Value = "D" & Format(Day(dayContractP), "00") & "-" & Format(dayContractP, "Mmm-yy")
+                    wsMarks.Cells(destRow, 3).value = "D" & Format(Day(dayContractP), "00") & "-" & _
+                    Choose(Month(dayContractP), "Jan", "Feb", "Mar", "Apr", "May", "Jun", _
+                           "Jul", "Aug", "Sep", "Oct", "Nov", "Dec") & "-" & _
+                    Right(CStr(Year(dayContract)), 2)
                 Else
-                    wsMarks.Cells(destRow, 3).Value = dayContractP
+                    wsMarks.Cells(destRow, 3).value = dayContractP
                 End If
-                wsMarks.Cells(destRow, 4).Value = dayMarkP
-                wsMarks.Cells(destRow, 5).Value = ""
+                wsMarks.Cells(destRow, 4).value = dayMarkP
+                wsMarks.Cells(destRow, 5).value = ""
                 destRow = destRow + 1
             Next rDayP
         End If
@@ -299,9 +326,9 @@ Public Sub Import_New_Japan_Power_Curve()
         If key = "TBL" Or key = "CBL" Or key = "KBL" Then
             For wkIndex = 0 To 2
                 wkRow = startRow + (wkIndex * 7)
-                wkContract = wsWD.Cells(wkRow, "B").Value
-                wkMark = wsWD.Cells(wkRow, "C").Value
-                wkChange = wsWD.Cells(wkRow + 1, "C").Value
+                wkContract = wsWD.Cells(wkRow, "B").value
+                wkMark = wsWD.Cells(wkRow, "C").value
+                wkChange = wsWD.Cells(wkRow + 1, "C").value
 
                 If Len(wkContract) > 0 Then
                     wkParts = Split(wkContract, "-")
@@ -309,11 +336,11 @@ Public Sub Import_New_Japan_Power_Curve()
                         wkNum = CLng(Replace(wkParts(0), "Wk", ""))
                         wkContract = "Wk" & Format(wkNum, "00") & "-" & wkParts(1)
                     End If
-                    wsMarks.Cells(destRow, 1).Value = todayDDMMYY
-                    wsMarks.Cells(destRow, 2).Value = productMap(key)
-                    wsMarks.Cells(destRow, 3).Value = wkContract
-                    wsMarks.Cells(destRow, 4).Value = wkMark
-                    wsMarks.Cells(destRow, 5).Value = wkChange
+                    wsMarks.Cells(destRow, 1).value = todayDDMMYY
+                    wsMarks.Cells(destRow, 2).value = productMap(key)
+                    wsMarks.Cells(destRow, 3).value = wkContract
+                    wsMarks.Cells(destRow, 4).value = wkMark
+                    wsMarks.Cells(destRow, 5).value = wkChange
                     destRow = destRow + 1
                 End If
             Next wkIndex
@@ -321,23 +348,26 @@ Public Sub Import_New_Japan_Power_Curve()
 
         '------------- Numeric rows -------------
         For r = firstDataRow To lastDataRow
-            contractVal = wsCurve.Cells(r, colContract).Value
-            markVal = wsCurve.Cells(r, colMap(key)).Value
+            contractVal = wsCurve.Cells(r, colContract).value
+            markVal = wsCurve.Cells(r, colMap(key)).value
             If key = "TOPK" Or key = "COPK" Or key = "KOPK" Then
                 changeVal = ""
             Else
-                changeVal = wsCurve.Cells(r, colMap(key) + 1).Value
+                changeVal = wsCurve.Cells(r, colMap(key) + 1).value
             End If
 
-            wsMarks.Cells(destRow, 1).Value = todayDDMMYY
-            wsMarks.Cells(destRow, 2).Value = productMap(key)
+            wsMarks.Cells(destRow, 1).value = todayDDMMYY
+            wsMarks.Cells(destRow, 2).value = productMap(key)
             If IsDate(contractVal) Then
-                wsMarks.Cells(destRow, 3).Value = DateSerial(Year(contractVal), Month(contractVal), 1)
+                wsMarks.Cells(destRow, 3).value = _
+            Choose(Month(contractVal), "Jan", "Feb", "Mar", "Apr", "May", "Jun", _
+                   "Jul", "Aug", "Sep", "Oct", "Nov", "Dec") & "-" & _
+            Format(Year(contractVal), "00")
             Else
-                wsMarks.Cells(destRow, 3).Value = contractVal
+                wsMarks.Cells(destRow, 3).value = contractVal
             End If
-            wsMarks.Cells(destRow, 4).Value = markVal
-            wsMarks.Cells(destRow, 5).Value = changeVal
+            wsMarks.Cells(destRow, 4).value = markVal
+            wsMarks.Cells(destRow, 5).value = changeVal
             destRow = destRow + 1
         Next r
 
@@ -363,7 +393,8 @@ Public Sub Import_New_Japan_Power_Curve()
     ' Save destination workbook
     '-------------------------------
     wbDest.Save
-
+    
+    
     MsgBox "Done", vbInformation
 
 End Sub
@@ -384,3 +415,4 @@ Public Function GetSheetByNameInsensitive(wb As Workbook, sheetName As String) A
         End If
     Next ws
 End Function
+

@@ -640,7 +640,3 @@ ErrorHandler:
     Resume CleanExit
 
 End Sub
-
-
-
-

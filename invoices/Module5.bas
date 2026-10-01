@@ -1393,10 +1393,13 @@ Private Function GetVGMJOutputFolder() As String
     Dim wsSettings As Worksheet
 
     Dim basePath As String
+    Dim yearPath As String
     Dim vgmjPath As String
     Dim monthPath As String
 
     Dim invoiceDate As Date
+    Dim contractMonth As Date
+    Dim yearFolder As String
     Dim monthFolder As String
 
     Dim fso As Object
@@ -1407,6 +1410,10 @@ Private Function GetVGMJOutputFolder() As String
     Set fso = _
         CreateObject( _
             "Scripting.FileSystemObject")
+
+    '====================================================
+    ' GET BASE PATH FROM SETTINGS!A16
+    '====================================================
 
     basePath = _
         GetSettingsPath( _
@@ -1424,7 +1431,7 @@ Private Function GetVGMJOutputFolder() As String
     End If
 
     '====================================================
-    ' INVOICE DATE FROM A2
+    ' GET INVOICE DATE FROM SETTINGS!A2
     '====================================================
 
     If Not IsDate( _
@@ -1442,6 +1449,24 @@ Private Function GetVGMJOutputFolder() As String
         CDate( _
             wsSettings.Range("A2").Value)
 
+    '====================================================
+    ' CONTRACT MONTH = A2 MINUS 1 MONTH
+    '
+    ' Example:
+    ' A2 = 01-Oct-2026
+    ' Contract month = Sep-2026
+    '====================================================
+
+    contractMonth = _
+        DateAdd( _
+            "m", _
+            -1, _
+            invoiceDate)
+
+    '====================================================
+    ' CHECK / CREATE BASE FOLDER
+    '====================================================
+
     If Not fso.FolderExists(basePath) Then
 
         CreateFolderRecursive _
@@ -1450,9 +1475,42 @@ Private Function GetVGMJOutputFolder() As String
 
     End If
 
-    vgmjPath = _
+    '====================================================
+    ' YEAR FOLDER
+    '
+    ' Example:
+    ' A2 = 01-Sep-2026
+    '
+    ' basePath\2026
+    '====================================================
+
+    yearFolder = _
+        Format( _
+            invoiceDate, _
+            "yyyy")
+
+    yearPath = _
         fso.BuildPath( _
             basePath, _
+            yearFolder)
+
+    If Not fso.FolderExists(yearPath) Then
+
+        fso.CreateFolder _
+            yearPath
+
+    End If
+
+    '====================================================
+    ' VGMJ FOLDER INSIDE YEAR
+    '
+    ' Example:
+    ' basePath\2026\VGMJ
+    '====================================================
+
+    vgmjPath = _
+        fso.BuildPath( _
+            yearPath, _
             "VGMJ")
 
     If Not fso.FolderExists(vgmjPath) Then
@@ -1462,13 +1520,20 @@ Private Function GetVGMJOutputFolder() As String
 
     End If
 
+    '====================================================
+    ' MONTH FOLDER
+    '
+    ' Example:
+    ' basePath\2026\VGMJ\202609 Sep
+    '====================================================
+
     monthFolder = _
         Format( _
-            invoiceDate, _
+            contractMonth, _
             "yyyymm") & _
         " " & _
         Format( _
-            invoiceDate, _
+            contractMonth, _
             "mmm")
 
     monthPath = _
@@ -2431,9 +2496,4 @@ Private Function ConvertVGMJProduct( _
         product
 
 End Function
-
-
-
-
-
 

@@ -51,10 +51,10 @@ Public Sub GenerateVGMJ()
     ' CHECK INVOICE DATE
     '====================================================
 
-    If Not IsDate(wsSettings.Range("B2").value) Then
+    If Not IsDate(wsSettings.Range("A2").Value) Then
 
         MsgBox _
-            "Invalid invoice date in Settings!B2.", _
+            "Invalid invoice date in Settings!A2.", _
             vbCritical
 
         Exit Sub
@@ -67,7 +67,7 @@ Public Sub GenerateVGMJ()
 
     invoiceFolder = _
         GetSettingsPath( _
-            CStr(wsSettings.Range("A16").value))
+            CStr(wsSettings.Range("A16").Value))
 
     If invoiceFolder = "" Then
 
@@ -121,7 +121,7 @@ Public Sub GenerateVGMJ()
     If invoiceWB Is Nothing Then
 
         MsgBox _
-            "Cannot find the invoice data workbook." & _
+            "Cannot find the invoice data workbook. Check IT Project folder if it is not in the folder stated below." & _
             vbCrLf & vbCrLf & _
             "Folder checked:" & _
             vbCrLf & _
@@ -208,7 +208,7 @@ Private Function GetSettingsPath( _
 
     username = _
         Trim(CStr( _
-            wsSettings.Range("A5").value))
+            wsSettings.Range("A5").Value))
 
     cleanPath = _
         Trim(storedPath)
@@ -456,15 +456,15 @@ Private Sub ProcessVGMJInvoices( _
         '================================================
 
         If Trim(CStr( _
-            wsData.Cells(r, "AH").value)) <> "" Then
+            wsData.Cells(r, "AH").Value)) <> "" Then
 
             invoiceRef = _
                 Trim(CStr( _
-                    wsData.Cells(r, "AH").value))
+                    wsData.Cells(r, "AH").Value))
 
             clientName = _
                 Trim(CStr( _
-                    wsData.Cells(r, "T").value))
+                    wsData.Cells(r, "T").Value))
 
             startRow = r
             endRow = r
@@ -475,28 +475,20 @@ Private Sub ProcessVGMJInvoices( _
 
             Do While endRow < lastRow
 
-                '--------------------------------------------
-                ' NEW INVOICE REFERENCE
-                '--------------------------------------------
-
                 If Trim(CStr( _
                     wsData.Cells( _
                         endRow + 1, _
-                        "AH").value)) <> "" Then
+                        "AH").Value)) <> "" Then
 
                     Exit Do
 
                 End If
 
-                '--------------------------------------------
-                ' DIFFERENT CLIENT
-                '--------------------------------------------
-
                 If StrComp( _
                     Trim(CStr( _
                         wsData.Cells( _
                             endRow + 1, _
-                            "T").value)), _
+                            "T").Value)), _
                     clientName, _
                     vbTextCompare) <> 0 Then
 
@@ -534,10 +526,6 @@ Private Sub ProcessVGMJInvoices( _
                 endRow, _
                 outputFolder
 
-            '================================================
-            ' NEXT INVOICE
-            '================================================
-
             r = _
                 endRow + 1
 
@@ -555,14 +543,6 @@ End Sub
 
 '====================================================================
 ' GENERATE NORMAL VGMJ EXCEL
-'
-' ALWAYS CREATED.
-'
-' TEMPLATE:
-' Settings!A22
-'
-' FILE:
-' VGMJ202609001_Theme.xlsx
 '====================================================================
 
 Private Sub GenerateNormalVGMJExcel( _
@@ -584,7 +564,6 @@ Private Sub GenerateNormalVGMJExcel( _
     Dim wsJapanese As Worksheet
 
     Dim shortName As String
-
     Dim invoiceDate As Date
 
     On Error GoTo ErrorHandler
@@ -593,21 +572,21 @@ Private Sub GenerateNormalVGMJExcel( _
         ThisWorkbook.Worksheets("Settings")
 
     '====================================================
-    ' GET INVOICE DATE
+    ' GET INVOICE DATE FROM SETTINGS A2
     '====================================================
 
     If Not IsDate( _
-        settingsWS.Range("B2").value) Then
+        settingsWS.Range("A2").Value) Then
 
         Err.Raise _
             vbObjectError + 3000, , _
-            "Invalid invoice date in Settings!B2."
+            "Invalid invoice date in Settings!A2."
 
     End If
 
     invoiceDate = _
         CDate( _
-            settingsWS.Range("B2").value)
+            settingsWS.Range("A2").Value)
 
     '====================================================
     ' GET SHORT NAME
@@ -626,7 +605,7 @@ Private Sub GenerateNormalVGMJExcel( _
     templatePath = _
         GetSettingsPath( _
             CStr( _
-                settingsWS.Range("A22").value))
+                settingsWS.Range("A22").Value))
 
     If templatePath = "" Then
 
@@ -782,10 +761,6 @@ Private Sub GenerateNormalVGMJExcel( _
 
     exportWB.Save
 
-    '====================================================
-    ' CLOSE
-    '====================================================
-
     exportWB.Close _
         SaveChanges:=False
 
@@ -823,27 +798,6 @@ End Sub
 
 '====================================================================
 ' GENERATE TRADE EXCEL IF REQUIRED
-'
-' CLIENT SETTING:
-'
-' A = Client
-' B = Create Trade Excel TRUE/FALSE
-' C = Short Name
-' D = Minimum Amount
-' E = Split Type
-'
-' TEMPLATE:
-'
-' Settings!A13
-'
-' FILE:
-'
-' VGMJ202609001_Theme_trade.xlsx
-'
-' SHEET:
-'
-' Sep 2026
-'
 '====================================================================
 
 Private Sub GenerateTradeExcelIfRequired( _
@@ -864,7 +818,6 @@ Private Sub GenerateTradeExcelIfRequired( _
     Dim exportWS As Worksheet
 
     Dim shortName As String
-
     Dim exportExcel As Boolean
 
     Dim invoiceDate As Date
@@ -880,26 +833,20 @@ Private Sub GenerateTradeExcelIfRequired( _
     '====================================================
 
     If Not IsDate( _
-        settingsWS.Range("B2").value) Then
+        settingsWS.Range("A2").Value) Then
 
         Err.Raise _
             vbObjectError + 3999, , _
-            "Invalid invoice date in Settings!B2."
+            "Invalid invoice date in Settings!A2."
 
     End If
 
     invoiceDate = _
         CDate( _
-            settingsWS.Range("B2").value)
+            settingsWS.Range("A2").Value)
 
     '====================================================
     ' TRADE SHEET NAME
-    '
-    ' Example:
-    '
-    ' September 2026
-    ' becomes
-    ' Sep 2026
     '====================================================
 
     tradeSheetName = _
@@ -923,11 +870,6 @@ Private Sub GenerateTradeExcelIfRequired( _
 
     End If
 
-    '====================================================
-    ' B = FALSE
-    ' DO NOT CREATE TRADE EXCEL
-    '====================================================
-
     If exportExcel = False Then
 
         Exit Sub
@@ -941,7 +883,7 @@ Private Sub GenerateTradeExcelIfRequired( _
     templatePath = _
         GetSettingsPath( _
             CStr( _
-                settingsWS.Range("A13").value))
+                settingsWS.Range("A13").Value))
 
     If templatePath = "" Then
 
@@ -950,10 +892,6 @@ Private Sub GenerateTradeExcelIfRequired( _
             "Settings!A13 is empty."
 
     End If
-
-    '====================================================
-    ' CHECK TRADE TEMPLATE
-    '====================================================
 
     If Dir(templatePath) = "" Then
 
@@ -988,10 +926,6 @@ Private Sub GenerateTradeExcelIfRequired( _
 
     End If
 
-    '====================================================
-    ' IF TRADE FILE ALREADY EXISTS, SKIP
-    '====================================================
-
     If Dir(newFile) <> "" Then
 
         Exit Sub
@@ -1014,29 +948,11 @@ Private Sub GenerateTradeExcelIfRequired( _
 
     End If
 
-    '====================================================
-    ' OPEN TRADE EXCEL
-    '====================================================
-
     Set exportWB = _
         Workbooks.Open(newFile)
 
-    '====================================================
-    ' USE FIRST WORKSHEET
-    '====================================================
-
     Set exportWS = _
         exportWB.Worksheets(1)
-
-    '====================================================
-    ' RENAME TRADE SHEET
-    '
-    ' Example:
-    '
-    ' Sheet1
-    '   ->
-    ' Sep 2026
-    '====================================================
 
     exportWS.Name = _
         GetSafeSheetName( _
@@ -1044,25 +960,13 @@ Private Sub GenerateTradeExcelIfRequired( _
             exportWB, _
             exportWS)
 
-    '====================================================
-    ' POPULATE TRADE EXCEL
-    '====================================================
-
     PopulateTradeSheet _
         exportWS, _
         wsData, _
         startRow, _
         endRow
 
-    '====================================================
-    ' SAVE
-    '====================================================
-
     exportWB.Save
-
-    '====================================================
-    ' CLOSE
-    '====================================================
 
     exportWB.Close _
         SaveChanges:=False
@@ -1109,20 +1013,6 @@ End Sub
 
 '====================================================================
 ' GET SAFE SHEET NAME
-'
-' Excel sheet names:
-' - Maximum 31 characters
-' - Cannot contain:
-'   :
-'   \
-'   /
-'   ?
-'   *
-'   [
-'   ]
-'
-' This function also checks whether another sheet already
-' has the requested name.
 '====================================================================
 
 Private Function GetSafeSheetName( _
@@ -1136,10 +1026,6 @@ Private Function GetSafeSheetName( _
 
     cleanName = Trim(requestedName)
 
-    '====================================================
-    ' REMOVE INVALID CHARACTERS
-    '====================================================
-
     cleanName = Replace(cleanName, ":", "")
     cleanName = Replace(cleanName, "\", "")
     cleanName = Replace(cleanName, "/", "")
@@ -1147,10 +1033,6 @@ Private Function GetSafeSheetName( _
     cleanName = Replace(cleanName, "*", "")
     cleanName = Replace(cleanName, "[", "")
     cleanName = Replace(cleanName, "]", "")
-
-    '====================================================
-    ' MAXIMUM 31 CHARACTERS
-    '====================================================
 
     If Len(cleanName) > 31 Then
 
@@ -1164,10 +1046,6 @@ Private Function GetSafeSheetName( _
         cleanName = "Trade"
 
     End If
-
-    '====================================================
-    ' CHECK IF NAME IS ALREADY USED
-    '====================================================
 
     testName = cleanName
     counter = 1
@@ -1230,19 +1108,6 @@ End Function
 
 '====================================================================
 ' GET TRADE CLIENT SETTING
-'
-' A = Client
-' B = TRUE/FALSE
-' C = Short Name
-' E = Split Type
-'
-' First:
-'
-' Client + matching split
-'
-' Then:
-'
-' Client + blank split
 '====================================================================
 
 Private Function GetTradeClientSetting( _
@@ -1269,7 +1134,7 @@ Private Function GetTradeClientSetting( _
             CStr( _
                 wsData.Cells( _
                     startRow, _
-                    "C").value))
+                    "C").Value))
 
     lastRow = _
         ws.Cells( _
@@ -1284,24 +1149,24 @@ Private Function GetTradeClientSetting( _
 
         If StrComp( _
             Trim(CStr( _
-                ws.Cells(r, "A").value)), _
+                ws.Cells(r, "A").Value)), _
             Trim(clientName), _
             vbTextCompare) = 0 Then
 
             settingSplitType = _
                 UCase(Trim(CStr( _
-                    ws.Cells(r, "E").value)))
+                    ws.Cells(r, "E").Value)))
 
             If settingSplitType = _
                 UCase(invoiceSplitType) Then
 
                 exportExcel = _
                     IsSettingTrue( _
-                        ws.Cells(r, "B").value)
+                        ws.Cells(r, "B").Value)
 
                 shortName = _
                     Trim(CStr( _
-                        ws.Cells(r, "C").value))
+                        ws.Cells(r, "C").Value))
 
                 GetTradeClientSetting = True
 
@@ -1314,31 +1179,30 @@ Private Function GetTradeClientSetting( _
     Next r
 
     '====================================================
-    ' SECOND: NORMAL CLIENT
-    ' E IS BLANK
+    ' SECOND: CLIENT + BLANK SPLIT
     '====================================================
 
     For r = 2 To lastRow
 
         If StrComp( _
             Trim(CStr( _
-                ws.Cells(r, "A").value)), _
+                ws.Cells(r, "A").Value)), _
             Trim(clientName), _
             vbTextCompare) = 0 Then
 
             settingSplitType = _
                 Trim(CStr( _
-                    ws.Cells(r, "E").value))
+                    ws.Cells(r, "E").Value))
 
             If settingSplitType = "" Then
 
                 exportExcel = _
                     IsSettingTrue( _
-                        ws.Cells(r, "B").value)
+                        ws.Cells(r, "B").Value)
 
                 shortName = _
                     Trim(CStr( _
-                        ws.Cells(r, "C").value))
+                        ws.Cells(r, "C").Value))
 
                 GetTradeClientSetting = True
 
@@ -1355,11 +1219,6 @@ End Function
 
 '====================================================================
 ' POPULATE TRADE SHEET
-'
-' A:S from VGMJ invoice data
-'
-' Row 1 = template header
-' Row 2 onward = invoice data
 '====================================================================
 
 Private Sub PopulateTradeSheet( _
@@ -1373,39 +1232,24 @@ Private Sub PopulateTradeSheet( _
     rowCount = _
         endRow - startRow + 1
 
-    '====================================================
-    ' CLEAR OLD DATA
-    '====================================================
-
     If ws.Rows.Count >= 2 Then
 
         ws.Rows("2:" & ws.Rows.Count).ClearContents
 
     End If
 
-    '====================================================
-    ' COPY VALUES A:S
-    '====================================================
-
     ws.Range( _
         "A2:S" & _
-        rowCount + 1).value = _
+        rowCount + 1).Value = _
             wsData.Range( _
-                "A" & startRow & ":S" & endRow).value
+                "A" & startRow & _
+                ":S" & endRow).Value
 
 End Sub
 
 
 '====================================================================
 ' GET CLIENT SHORT NAME
-'
-' Uses Client Setting column C.
-'
-' First:
-' Client + split
-'
-' Then:
-' Client + blank split
 '====================================================================
 
 Private Function GetClientShortName( _
@@ -1431,7 +1275,7 @@ Private Function GetClientShortName( _
             CStr( _
                 wsData.Cells( _
                     startRow, _
-                    "C").value))
+                    "C").Value))
 
     lastRow = _
         ws.Cells( _
@@ -1446,20 +1290,20 @@ Private Function GetClientShortName( _
 
         If StrComp( _
             Trim(CStr( _
-                ws.Cells(r, "A").value)), _
+                ws.Cells(r, "A").Value)), _
             Trim(clientName), _
             vbTextCompare) = 0 Then
 
             settingSplitType = _
                 UCase(Trim(CStr( _
-                    ws.Cells(r, "E").value)))
+                    ws.Cells(r, "E").Value)))
 
             If settingSplitType = _
                 UCase(invoiceSplitType) Then
 
                 GetClientShortName = _
                     Trim(CStr( _
-                        ws.Cells(r, "C").value))
+                        ws.Cells(r, "C").Value))
 
                 Exit Function
 
@@ -1477,19 +1321,19 @@ Private Function GetClientShortName( _
 
         If StrComp( _
             Trim(CStr( _
-                ws.Cells(r, "A").value)), _
+                ws.Cells(r, "A").Value)), _
             Trim(clientName), _
             vbTextCompare) = 0 Then
 
             settingSplitType = _
                 Trim(CStr( _
-                    ws.Cells(r, "E").value))
+                    ws.Cells(r, "E").Value))
 
             If settingSplitType = "" Then
 
                 GetClientShortName = _
                     Trim(CStr( _
-                        ws.Cells(r, "C").value))
+                        ws.Cells(r, "C").Value))
 
                 Exit Function
 
@@ -1504,22 +1348,12 @@ End Function
 
 '====================================================================
 ' CHECK WHETHER CLIENT SETTING COLUMN B IS TRUE
-'
-' Handles:
-'
-' TRUE
-' True
-' true
-' YES
-' Y
-' 1
-' Boolean True
 '====================================================================
 
 Private Function IsSettingTrue( _
-    ByVal value As Variant) As Boolean
+    ByVal Value As Variant) As Boolean
 
-    If IsError(value) Then
+    If IsError(Value) Then
 
         IsSettingTrue = False
 
@@ -1527,15 +1361,15 @@ Private Function IsSettingTrue( _
 
     End If
 
-    If VarType(value) = vbBoolean Then
+    If VarType(Value) = vbBoolean Then
 
-        IsSettingTrue = CBool(value)
+        IsSettingTrue = CBool(Value)
 
         Exit Function
 
     End If
 
-    Select Case UCase(Trim(CStr(value)))
+    Select Case UCase(Trim(CStr(Value)))
 
         Case "TRUE", "YES", "Y", "1"
 
@@ -1552,18 +1386,6 @@ End Function
 
 '====================================================================
 ' GET VGMJ OUTPUT FOLDER
-'
-' A16:
-'
-' \Vanir Global Markets Pte Ltd\Vanir Team - Invoices
-'
-' OUTPUT:
-'
-' C:\Users\Username\
-' Vanir Global Markets Pte Ltd\
-' Vanir Team - Invoices\
-' VGMJ\
-' 202609 Sep
 '====================================================================
 
 Private Function GetVGMJOutputFolder() As String
@@ -1586,14 +1408,10 @@ Private Function GetVGMJOutputFolder() As String
         CreateObject( _
             "Scripting.FileSystemObject")
 
-    '====================================================
-    ' GET BASE PATH FROM A16
-    '====================================================
-
     basePath = _
         GetSettingsPath( _
             CStr( _
-                wsSettings.Range("A16").value))
+                wsSettings.Range("A16").Value))
 
     If basePath = "" Then
 
@@ -1606,14 +1424,14 @@ Private Function GetVGMJOutputFolder() As String
     End If
 
     '====================================================
-    ' CHECK DATE
+    ' INVOICE DATE FROM A2
     '====================================================
 
     If Not IsDate( _
-        wsSettings.Range("B2").value) Then
+        wsSettings.Range("A2").Value) Then
 
         MsgBox _
-            "Invalid invoice date in Settings!B2.", _
+            "Invalid invoice date in Settings!A2.", _
             vbCritical
 
         Exit Function
@@ -1622,11 +1440,7 @@ Private Function GetVGMJOutputFolder() As String
 
     invoiceDate = _
         CDate( _
-            wsSettings.Range("B2").value)
-
-    '====================================================
-    ' CREATE BASE FOLDER
-    '====================================================
+            wsSettings.Range("A2").Value)
 
     If Not fso.FolderExists(basePath) Then
 
@@ -1635,10 +1449,6 @@ Private Function GetVGMJOutputFolder() As String
             basePath
 
     End If
-
-    '====================================================
-    ' CREATE VGMJ FOLDER
-    '====================================================
 
     vgmjPath = _
         fso.BuildPath( _
@@ -1651,14 +1461,6 @@ Private Function GetVGMJOutputFolder() As String
             vgmjPath
 
     End If
-
-    '====================================================
-    ' CREATE MONTH FOLDER
-    '
-    ' Example:
-    '
-    ' 202609 Sep
-    '====================================================
 
     monthFolder = _
         Format( _
@@ -1792,6 +1594,15 @@ Private Sub PopulateVGMJSheet( _
     Dim fileRefHeader As String
 
     '====================================================
+    ' JAPANESE PAYMENT DUE DATE VARIABLES
+    '====================================================
+
+    Dim paymentDueLabel As Range
+    Dim paymentDueCell As Range
+    Dim paymentDueDate As Date
+    Dim paymentDueText As String
+
+    '====================================================
     ' DETERMINE ENGLISH / JAPANESE
     '====================================================
 
@@ -1807,21 +1618,25 @@ Private Sub PopulateVGMJSheet( _
 
     If isJapanese Then
 
-        ws.Range("B4").value = clientName
+        ws.Range("B4").Value = _
+            clientName
 
     Else
 
-        ws.Range("B2").value = clientName
+        ws.Range("B2").Value = _
+            clientName
 
     End If
 
     '====================================================
     ' INVOICE DATE
+    '
+    ' Uses Settings!A2 via invoiceDate.
     '====================================================
 
     If isJapanese Then
 
-        ws.Range("K11").value = _
+        ws.Range("K11").Value = _
             ChrW(&H8ACB) & _
             ChrW(&H6C42) & _
             ChrW(&H66F8) & _
@@ -1838,7 +1653,7 @@ Private Sub PopulateVGMJSheet( _
 
     Else
 
-        ws.Range("K9").value = _
+        ws.Range("K9").Value = _
             "Invoice Date:" & _
             Format( _
                 invoiceDate, _
@@ -1852,7 +1667,7 @@ Private Sub PopulateVGMJSheet( _
 
     If isJapanese Then
 
-        ws.Range("K10").value = _
+        ws.Range("K10").Value = _
             ChrW(&H8ACB) & _
             ChrW(&H6C42) & _
             ChrW(&H66F8) & _
@@ -1863,31 +1678,152 @@ Private Sub PopulateVGMJSheet( _
             Format( _
                 invoiceDate, _
                 "yyyymm") & _
-                "001"
+            "001"
 
     Else
 
-        ws.Range("K8").value = _
+        ws.Range("K8").Value = _
             "Invoice Number:VGMJ " & _
             Format( _
                 invoiceDate, _
                 "yyyymm") & _
-                "001"
+            "001"
 
     End If
 
     '====================================================
-    ' MONTH END
+    ' PAYMENT DUE DATE
+    '
+    ' IMPORTANT:
+    ' Payment Due Date uses the LAST DAY of the
+    ' month containing Settings!A2.
+    '
+    ' Examples:
+    ' Settings!A2 = 01-Sep-2026 -> 30-Sep-26
+    ' Settings!A2 = 15-Oct-2026 -> 31-Oct-26
+    '
+    ' English:
+    '   format = dd-mmm-yy
+    '
+    ' Japanese:
+    '   same underlying month-end date,
+    '   while preserving the Japanese cell format.
+    '
+    ' IMPORTANT:
+    ' Japanese C16 is NOT touched because it contains
+    ' the invoice amount formula such as:
+    '
+    ' =CONCATENATE("¥",TEXT(L40,"#,##0"),"-")
     '====================================================
 
-    ws.Range("C16").value = _
+    paymentDueDate = _
         DateSerial( _
             Year(invoiceDate), _
             Month(invoiceDate) + 1, _
             0)
 
-    ws.Range("C16").NumberFormat = _
-        "d/m/yyyy"
+    If Not isJapanese Then
+
+        '================================================
+        ' ENGLISH PAYMENT DUE DATE
+        '================================================
+
+        ws.Range("C16").Value = _
+            paymentDueDate
+
+        ws.Range("C16").NumberFormat = _
+            "dd-mmm-yy"
+
+    Else
+
+        '================================================
+        ' JAPANESE TEXT:
+        '
+        ' ?????
+        '================================================
+
+        paymentDueText = _
+            ChrW(&H304A) & _
+            ChrW(&H652F) & _
+            ChrW(&H6255) & _
+            ChrW(&H671F) & _
+            ChrW(&H9650)
+
+        Set paymentDueLabel = Nothing
+        Set paymentDueCell = Nothing
+
+        Set paymentDueLabel = _
+            ws.Cells.Find( _
+                What:=paymentDueText, _
+                After:=ws.Range("A1"), _
+                LookIn:=xlValues, _
+                LookAt:=xlPart, _
+                SearchOrder:=xlByRows, _
+                SearchDirection:=xlNext, _
+                MatchCase:=False)
+
+        If Not paymentDueLabel Is Nothing Then
+
+            '================================================
+            ' FIND CELL IMMEDIATELY TO THE RIGHT
+            '================================================
+
+            If paymentDueLabel.MergeCells Then
+
+                Set paymentDueCell = _
+                    paymentDueLabel.MergeArea.Cells( _
+                        1, _
+                        paymentDueLabel.MergeArea.Columns.Count).Offset( _
+                            0, _
+                            1)
+
+            Else
+
+                Set paymentDueCell = _
+                    paymentDueLabel.Offset(0, 1)
+
+            End If
+
+            '================================================
+            ' DESTINATION MAY ALSO BE MERGED
+            '================================================
+
+            If paymentDueCell.MergeCells Then
+
+                Set paymentDueCell = _
+                    paymentDueCell.MergeArea.Cells(1, 1)
+
+            End If
+
+            '================================================
+            ' WRITE SAME DUE DATE AS ENGLISH
+            '================================================
+
+            paymentDueCell.Value = _
+                paymentDueDate
+
+        Else
+
+            MsgBox _
+                "Cannot find the Japanese payment due date field " & _
+                "in sheet '" & ws.Name & "'.", _
+                vbExclamation
+
+        End If
+
+    End If
+
+    '====================================================
+    ' UPDATE INVOICE DESCRIPTION MONTH
+    '
+    ' Both English and Japanese use Settings!A2
+    ' via invoiceDate.
+    '====================================================
+
+    UpdateInvoiceNarrative _
+        ws, _
+        invoiceDate, _
+        isJapanese
 
     '====================================================
     ' FILE REF HEADER
@@ -2005,10 +1941,10 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "A").value = _
+            "A").Value = _
                 wsData.Cells( _
                     r, _
-                    "A").value
+                    "A").Value
 
         '================================================
         ' B - CONTRACT DATE
@@ -2016,10 +1952,10 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "B").value = _
+            "B").Value = _
                 wsData.Cells( _
                     r, _
-                    "B").value
+                    "B").Value
 
         ws.Cells( _
             destRow, _
@@ -2032,12 +1968,12 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "C").value = _
+            "C").Value = _
                 ConvertVGMJProduct( _
                     CStr( _
                         wsData.Cells( _
                             r, _
-                            "C").value))
+                            "C").Value))
 
         '================================================
         ' D - CONTRACT
@@ -2045,10 +1981,10 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "D").value = _
+            "D").Value = _
                 wsData.Cells( _
                     r, _
-                    "D").value
+                    "D").Value
 
         '================================================
         ' E - BUY / SELL
@@ -2056,10 +1992,10 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "E").value = _
+            "E").Value = _
                 wsData.Cells( _
                     r, _
-                    "E").value
+                    "E").Value
 
         '================================================
         ' F - C/P
@@ -2067,10 +2003,10 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "F").value = _
+            "F").Value = _
                 wsData.Cells( _
                     r, _
-                    "F").value
+                    "F").Value
 
         '================================================
         ' G - QUANTITY
@@ -2078,10 +2014,10 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "G").value = _
+            "G").Value = _
                 wsData.Cells( _
                     r, _
-                    "G").value
+                    "G").Value
 
         '================================================
         ' H - UNIT
@@ -2089,7 +2025,7 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "H").value = _
+            "H").Value = _
                 "JPY/kWh"
 
         '================================================
@@ -2098,7 +2034,7 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "I").value = _
+            "I").Value = _
                 "JPY/kWh"
 
         '================================================
@@ -2107,7 +2043,7 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "J").value = 0
+            "J").Value = 0
 
         ws.Cells( _
             destRow, _
@@ -2128,21 +2064,229 @@ Private Sub PopulateVGMJSheet( _
 
         ws.Cells( _
             destRow, _
-            "L").value = _
+            "L").Value = _
                 wsData.Cells( _
                     r, _
-                    "S").value
+                    "S").Value
 
         '================================================
         ' M - CURRENCY
         '================================================
 
-        ws.Cells( _
-            destRow, _
-            "M").value = _
-                "JPY"
+        If isJapanese Then
+
+            ws.Cells( _
+                destRow, _
+                "M").Value = _
+                    ChrW(&H5186)      ' ?
+
+        Else
+
+            ws.Cells( _
+                destRow, _
+                "M").Value = _
+                    "JPY"
+
+        End If
 
     Next r
+
+End Sub
+
+
+'====================================================================
+' UPDATE INVOICE NARRATIVE
+'
+' Uses invoiceDate, which comes from Settings!A2.
+'
+' ENGLISH EXAMPLE:
+'
+' We hereby invoice you for the fees related to your contract for
+' September 2026 as detailed below. Kindly review and process the
+' payment accordingly.
+'
+' JAPANESE EXAMPLE:
+'
+' 2026?9??????????????????????
+' ???????????????????????
+'====================================================================
+
+Private Sub UpdateInvoiceNarrative( _
+    ByVal ws As Worksheet, _
+    ByVal invoiceDate As Date, _
+    ByVal isJapanese As Boolean)
+
+    Dim narrativeCell As Range
+    Dim searchText As String
+    Dim japaneseNarrative As String
+    Dim contractMonth As Date
+
+    Set narrativeCell = Nothing
+
+    '====================================================
+    ' CONTRACT MONTH
+    '
+    ' The invoice narrative describes the PREVIOUS month.
+    '
+    ' Example:
+    ' Settings!A2 = 01-Oct-2026
+    ' Contract month = September 2026
+    '====================================================
+
+    contractMonth = _
+        DateAdd( _
+            "m", _
+            -1, _
+            invoiceDate)
+
+    If Not isJapanese Then
+
+        '================================================
+        ' ENGLISH
+        '================================================
+
+        searchText = _
+            "We hereby invoice you for the fees related to your contract for"
+
+        Set narrativeCell = _
+            ws.Cells.Find( _
+                What:=searchText, _
+                After:=ws.Range("A1"), _
+                LookIn:=xlValues, _
+                LookAt:=xlPart, _
+                SearchOrder:=xlByRows, _
+                SearchDirection:=xlNext, _
+                MatchCase:=False)
+
+        If Not narrativeCell Is Nothing Then
+
+            If narrativeCell.MergeCells Then
+
+                Set narrativeCell = _
+                    narrativeCell.MergeArea.Cells(1, 1)
+
+            End If
+
+            narrativeCell.Value = _
+                "We hereby invoice you for the fees related to your contract for " & _
+                Format(contractMonth, "mmmm yyyy") & _
+                " as detailed below. Kindly review and process the payment accordingly."
+
+        End If
+
+    Else
+
+        '================================================
+        ' JAPANESE
+        '
+        ' Search for:
+        ' ???
+        '
+        ' Japanese is built with ChrW so it does not turn
+        ' into ????? in the VBA editor.
+        '================================================
+
+        searchText = _
+            ChrW(&H3054) & _
+            ChrW(&H6210) & _
+            ChrW(&H7D04)
+
+        Set narrativeCell = _
+            ws.Cells.Find( _
+                What:=searchText, _
+                After:=ws.Range("A1"), _
+                LookIn:=xlValues, _
+                LookAt:=xlPart, _
+                SearchOrder:=xlByRows, _
+                SearchDirection:=xlNext, _
+                MatchCase:=False)
+
+        If Not narrativeCell Is Nothing Then
+
+            If narrativeCell.MergeCells Then
+
+                Set narrativeCell = _
+                    narrativeCell.MergeArea.Cells(1, 1)
+
+            End If
+
+            japaneseNarrative = _
+                CStr(Year(contractMonth)) & _
+                ChrW(&H5E74) & _
+                CStr(Month(contractMonth)) & _
+                ChrW(&H6708) & _
+                ChrW(&H5206) & _
+                ChrW(&H306E)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H8CB4) & _
+                ChrW(&H793E) & _
+                ChrW(&H304C) & _
+                ChrW(&H3054) & _
+                ChrW(&H6210) & _
+                ChrW(&H7D04)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H3055) & _
+                ChrW(&H308C) & _
+                ChrW(&H305F) & _
+                ChrW(&H8AF8) & _
+                ChrW(&H304A) & _
+                ChrW(&H624B)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H6570) & _
+                ChrW(&H6599) & _
+                ChrW(&H306B) & _
+                ChrW(&H3064) & _
+                ChrW(&H3044) & _
+                ChrW(&H3066)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H3001) & _
+                ChrW(&H4E0B) & _
+                ChrW(&H8A18) & _
+                ChrW(&H306E) & _
+                ChrW(&H901A) & _
+                ChrW(&H308A)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H3054) & _
+                ChrW(&H8ACB) & _
+                ChrW(&H6C42) & _
+                ChrW(&H7533) & _
+                ChrW(&H3057) & _
+                ChrW(&H4E0A)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H3052) & _
+                ChrW(&H307E) & _
+                ChrW(&H3059) & _
+                ChrW(&H306E) & _
+                ChrW(&H3067) & _
+                ChrW(&H3054)
+
+            japaneseNarrative = _
+                japaneseNarrative & _
+                ChrW(&H67FB) & _
+                ChrW(&H53CE) & _
+                ChrW(&H4E0B) & _
+                ChrW(&H3055) & _
+                ChrW(&H3044) & _
+                ChrW(&H3002)
+
+            narrativeCell.Value = _
+                japaneseNarrative
+
+        End If
+
+    End If
 
 End Sub
 
@@ -2287,5 +2431,9 @@ Private Function ConvertVGMJProduct( _
         product
 
 End Function
+
+
+
+
 
 

@@ -355,6 +355,9 @@ Private Sub FillNonGSTTemplate( _
 
     Dim foundClient As Boolean
     Dim lastClientRow As Long
+    
+    Dim gstCell As Range
+    Dim totalDueCell As Range
 
     '==============================
     'Find template sheet
@@ -519,6 +522,29 @@ End If
         End With
 
     End If
+    
+    '==============================
+    'Total Amount Due
+    '==============================
+    Set gstCell = wsTemplate.Cells.Find( _
+        What:="GST", _
+        LookIn:=xlValues, _
+        LookAt:=xlWhole)
+    
+    Set totalDueCell = wsTemplate.Cells.Find( _
+        What:="Total Amount Due", _
+        LookIn:=xlValues, _
+        LookAt:=xlWhole)
+    
+    If Not totalCell Is Nothing _
+       And Not gstCell Is Nothing _
+       And Not totalDueCell Is Nothing Then
+    
+        totalDueCell.Offset(0, 4).Formula = _
+            "=" & totalCell.Offset(0, 4).Address(False, False) & _
+            "+" & gstCell.Offset(0, 4).Address(False, False)
+
+End If
 
 End Sub
 Private Function GetInvoiceOutputFolder() As String

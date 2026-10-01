@@ -29,14 +29,14 @@ Public Sub GenerateNonGST()
     '==========================
     'Read settings
     '==========================
-    If Not IsDate(wsSettings.Range("B2").value) Then
+    If Not IsDate(wsSettings.Range("B2").Value) Then
 
         MsgBox "Invalid invoice date in Settings!B2.", vbCritical
         Exit Sub
 
     End If
 
-    invoiceDate = wsSettings.Range("B2").value
+    invoiceDate = wsSettings.Range("B2").Value
 
     
     
@@ -78,13 +78,13 @@ Public Sub GenerateNonGST()
     'Read GST settings sheet
     '==========================
     On Error Resume Next
-    Set gstSettingsWS = gstWB.Worksheets(wsSettings.Range("B9").value)
+    Set gstSettingsWS = gstWB.Worksheets(wsSettings.Range("B9").Value)
     On Error GoTo 0
 
     If gstSettingsWS Is Nothing Then
 
         MsgBox _
-            "Cannot find sheet '" & wsSettings.Range("B9").value & _
+            "Cannot find sheet '" & wsSettings.Range("B9").Value & _
             "' in " & gstWB.Name, _
             vbCritical
 
@@ -92,19 +92,24 @@ Public Sub GenerateNonGST()
 
     End If
 
-    exchangeRate = gstSettingsWS.Range("B2").value
-    gstInvoiceDate = gstSettingsWS.Range("A1").value
+    exchangeRate = gstSettingsWS.Range("B2").Value
     
     '==========================
-    'Sync invoice date
+    'Override destination invoice date
+    'Settings!B2 -> sheet named in Settings!B9 -> F2
     '==========================
-    If CDate(gstInvoiceDate) <> CDate(invoiceDate) Then
+    gstSettingsWS.Range("F2").Value = invoiceDate
     
-        gstSettingsWS.Range("F2").value = invoiceDate
+
+    'Force Excel to recalculate after changing F2
+    Application.Calculate
     
-        gstInvoiceDate = invoiceDate
+    Do While Application.CalculationState <> xlDone
+        DoEvents
+    Loop
     
-    End If
+    'Read back the actual value from F2
+    gstInvoiceDate = gstSettingsWS.Range("F2").Value
 
     '==========================
     'User confirmation
@@ -239,10 +244,10 @@ Private Sub ProcessNonGSTInvoices( _
 
     Do While r <= lastRow
 
-        If Trim(wsData.Cells(r, "AH").value) <> "" Then
+        If Trim(wsData.Cells(r, "AH").Value) <> "" Then
 
-            invoiceRef = wsData.Cells(r, "AH").value
-            clientName = wsData.Cells(r, "T").value
+            invoiceRef = wsData.Cells(r, "AH").Value
+            clientName = wsData.Cells(r, "T").Value
             
             '==============================
             'Skip GST clients
@@ -251,9 +256,9 @@ Private Sub ProcessNonGSTInvoices( _
             
                 Do While endRow < lastRow
             
-                    If Trim(wsData.Cells(endRow + 1, "AH").value) <> "" Then Exit Do
+                    If Trim(wsData.Cells(endRow + 1, "AH").Value) <> "" Then Exit Do
             
-                    If wsData.Cells(endRow + 1, "T").value <> clientName Then Exit Do
+                    If wsData.Cells(endRow + 1, "T").Value <> clientName Then Exit Do
             
                     endRow = endRow + 1
             
@@ -270,9 +275,9 @@ Private Sub ProcessNonGSTInvoices( _
 
             Do While endRow < lastRow
 
-                If Trim(wsData.Cells(endRow + 1, "AH").value) <> "" Then Exit Do
+                If Trim(wsData.Cells(endRow + 1, "AH").Value) <> "" Then Exit Do
 
-                If wsData.Cells(endRow + 1, "T").value <> clientName Then Exit Do
+                If wsData.Cells(endRow + 1, "T").Value <> clientName Then Exit Do
 
                 endRow = endRow + 1
 
@@ -369,7 +374,7 @@ Private Sub FillNonGSTTemplate( _
     For r = 1 To mapLastRow
     
         If InStr(1, _
-                 wsMap.Cells(r, "A").value, _
+                 wsMap.Cells(r, "A").Value, _
                  "VGM Invoice System", _
                  vbTextCompare) > 0 Then
     
@@ -392,12 +397,12 @@ End If
     '----------------------------------------
     For r = templateStartRow To mapLastRow
     
-        If StrComp(Trim(wsMap.Cells(r, "B").value), _
+        If StrComp(Trim(wsMap.Cells(r, "B").Value), _
                    Trim(clientName), _
                    vbTextCompare) = 0 Then
     
             foundClient = True
-            templateSheetName = Trim(wsMap.Cells(r, "A").value)
+            templateSheetName = Trim(wsMap.Cells(r, "A").Value)
             Exit For
     
         End If
@@ -422,7 +427,7 @@ End If
     '==============================
     'Invoice Number
     '==============================
-    wsTemplate.Range("Q2").value = invoiceRef
+    wsTemplate.Range("Q2").Value = invoiceRef
 
     '==============================
     'Locate Total
@@ -466,25 +471,25 @@ End If
     
     Set wsClientSetting = ThisWorkbook.Worksheets("Client Setting")
     lastClientRow = clientSettingWS.Cells(wsClientSetting.Rows.Count, "A").End(xlUp).Row
-    invoiceSplitType = GetSplitType(wsData.Cells(startRow, "C").value)
+    invoiceSplitType = GetSplitType(wsData.Cells(startRow, "C").Value)
     
     For r = 2 To lastClientRow
     
-        If StrComp(Trim(wsClientSetting.Cells(r, "A").value), _
+        If StrComp(Trim(wsClientSetting.Cells(r, "A").Value), _
                    Trim(clientName), vbTextCompare) = 0 Then
     
-            If UCase(Trim(wsClientSetting.Cells(r, "E").value)) = invoiceSplitType Then
+            If UCase(Trim(wsClientSetting.Cells(r, "E").Value)) = invoiceSplitType Then
     
-                If IsNumeric(wsClientSetting.Cells(r, "D").value) Then
-                    minAmount = wsClientSetting.Cells(r, "D").value
+                If IsNumeric(wsClientSetting.Cells(r, "D").Value) Then
+                    minAmount = wsClientSetting.Cells(r, "D").Value
                 End If
     
                 Exit For
     
-            ElseIf Trim(wsClientSetting.Cells(r, "E").value) = "" Then
+            ElseIf Trim(wsClientSetting.Cells(r, "E").Value) = "" Then
     
-                If IsNumeric(wsClientSetting.Cells(r, "D").value) Then
-                    minAmount = wsClientSetting.Cells(r, "D").value
+                If IsNumeric(wsClientSetting.Cells(r, "D").Value) Then
+                    minAmount = wsClientSetting.Cells(r, "D").Value
                 End If
     
                 Exit For
@@ -506,7 +511,7 @@ End If
         With totalCell.Offset(0, 4)
         
             If minAmount > 0 And totalAmount < minAmount Then
-                .value = minAmount
+                .Value = minAmount
             Else
                 .Formula = "=SUM(S8:S" & tradeCount + 7 & ")"
             End If
@@ -536,8 +541,8 @@ Private Function GetInvoiceOutputFolder() As String
     '==============================
     'Read settings
     '==============================
-    basePath = "C:\Users\" & wsSettings.Range("A5").value & "\" & _
-               Trim(wsSettings.Range("A16").value)
+    basePath = "C:\Users\" & wsSettings.Range("A5").Value & "\" & _
+               Trim(wsSettings.Range("A16").Value)
     
     If basePath = "" Then
         MsgBox "Output folder path missing in Settings!A16"
@@ -545,12 +550,12 @@ Private Function GetInvoiceOutputFolder() As String
     End If
     
     
-    If Not IsDate(wsSettings.Range("B2").value) Then
+    If Not IsDate(wsSettings.Range("B2").Value) Then
         MsgBox "Invalid invoice date"
         Exit Function
     End If
     
-    invoiceDate = wsSettings.Range("B2").value
+    invoiceDate = wsSettings.Range("B2").Value
     
     
     '==============================
@@ -631,21 +636,21 @@ Private Sub GenerateExcelExport( _
 
     For r = 2 To lastClientRow
     
-        If StrComp(Trim(clientSettingWS.Cells(r, "A").value), _
+        If StrComp(Trim(clientSettingWS.Cells(r, "A").Value), _
                    Trim(clientName), _
                    vbTextCompare) = 0 Then
     
             'Split matches
-            If UCase(Trim(clientSettingWS.Cells(r, "E").value)) = invoiceSplitType Then
+            If UCase(Trim(clientSettingWS.Cells(r, "E").Value)) = invoiceSplitType Then
     
-                exportExcel = (clientSettingWS.Cells(r, "B").value = True)
-                shortName = Trim(clientSettingWS.Cells(r, "C").value)
+                exportExcel = (clientSettingWS.Cells(r, "B").Value = True)
+                shortName = Trim(clientSettingWS.Cells(r, "C").Value)
                 Exit For
                 
-            ElseIf Trim(clientSettingWS.Cells(r, "E").value) = "" Then
+            ElseIf Trim(clientSettingWS.Cells(r, "E").Value) = "" Then
                  'Normal client (no split configured)
-                exportExcel = (clientSettingWS.Cells(r, "B").value = True)
-                shortName = Trim(clientSettingWS.Cells(r, "C").value)
+                exportExcel = (clientSettingWS.Cells(r, "B").Value = True)
+                shortName = Trim(clientSettingWS.Cells(r, "C").Value)
                 Exit For
 
             End If
@@ -670,8 +675,8 @@ Private Sub GenerateExcelExport( _
     'Template path
     '==============================
     templatePath = "C:\Users\" & _
-                   Trim(settingsWS.Range("A5").value) & "\" & _
-                   Trim(settingsWS.Range("A13").value)
+                   Trim(settingsWS.Range("A5").Value) & "\" & _
+                   Trim(settingsWS.Range("A13").Value)
 
     If Dir(templatePath) = "" Then
         Err.Raise vbObjectError + 1000, , _
@@ -713,7 +718,7 @@ Private Sub GenerateExcelExport( _
     '==============================
     'Rename sheet
     '==============================
-    sheetName = Format(settingsWS.Range("B2").value, "mmmm yyyy")
+    sheetName = Format(settingsWS.Range("B2").Value, "mmmm yyyy")
 
     On Error Resume Next
     exportWS.Name = sheetName
@@ -730,8 +735,8 @@ Private Sub GenerateExcelExport( _
     '==============================
     rowCount = endRow - startRow + 1
 
-    exportWS.Range("A2:S" & rowCount + 1).value = _
-        wsData.Range("A" & startRow & ":S" & endRow).value
+    exportWS.Range("A2:S" & rowCount + 1).Value = _
+        wsData.Range("A" & startRow & ":S" & endRow).Value
 
     '==============================
     'Ensure calculations are complete
@@ -790,11 +795,11 @@ Private Function IsGSTClient(ws As Worksheet, clientName As String) As Boolean
 
     For r = 2 To lastRow
 
-        If StrComp(Trim(ws.Cells(r, "A").value), _
+        If StrComp(Trim(ws.Cells(r, "A").Value), _
                    Trim(clientName), _
                    vbTextCompare) = 0 Then
 
-            IsGSTClient = (ws.Cells(r, "D").value = True)
+            IsGSTClient = (ws.Cells(r, "D").Value = True)
             Exit Function
 
         End If
@@ -832,25 +837,25 @@ Private Sub ExportInvoicePDF( _
     'Get client short name
     '==============================
     Set wsClientSetting = ThisWorkbook.Worksheets("Client Setting")
-    invoiceSplitType = GetSplitType(wsData.Cells(startRow, "C").value)
+    invoiceSplitType = GetSplitType(wsData.Cells(startRow, "C").Value)
     
     lastRow = wsClientSetting.Cells(wsClientSetting.Rows.Count, "A").End(xlUp).Row
     
     For r = 2 To lastRow
     
-        If StrComp(Trim(wsClientSetting.Cells(r, "A").value), _
+        If StrComp(Trim(wsClientSetting.Cells(r, "A").Value), _
                    Trim(clientName), _
                    vbTextCompare) = 0 Then
                    
             'Split matches
-            If UCase(Trim(wsClientSetting.Cells(r, "E").value)) = invoiceSplitType Then
+            If UCase(Trim(wsClientSetting.Cells(r, "E").Value)) = invoiceSplitType Then
     
-                shortName = Trim(wsClientSetting.Cells(r, "C").value)
+                shortName = Trim(wsClientSetting.Cells(r, "C").Value)
                 Exit For
                 
-            ElseIf Trim(wsClientSetting.Cells(r, "E").value) = "" Then
+            ElseIf Trim(wsClientSetting.Cells(r, "E").Value) = "" Then
                  'Normal client (no split configured)
-                shortName = Trim(wsClientSetting.Cells(r, "C").value)
+                shortName = Trim(wsClientSetting.Cells(r, "C").Value)
                 Exit For
 
             End If
@@ -868,11 +873,11 @@ Private Sub ExportInvoicePDF( _
 
     For r = 2 To lastRow
 
-        If StrComp(Trim(wsMap.Cells(r, "B").value), _
+        If StrComp(Trim(wsMap.Cells(r, "B").Value), _
                    Trim(clientName), _
                    vbTextCompare) = 0 Then
 
-            templateSheetName = Trim(wsMap.Cells(r, "A").value)
+            templateSheetName = Trim(wsMap.Cells(r, "A").Value)
             Exit For
 
         End If
@@ -893,7 +898,7 @@ Private Sub ExportInvoicePDF( _
 
     'Only the default template needs the client name updated
     If templateSheetName = "Template - Energy" Then
-        wsTemplate.Range("C2").value = clientName
+        wsTemplate.Range("C2").Value = clientName
     End If
     
     If shortName <> "" Then
@@ -936,4 +941,5 @@ Private Function GetSplitType(ByVal product As String) As String
     End If
 
 End Function
+
 

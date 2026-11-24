@@ -1,4 +1,3 @@
-Attribute VB_Name = "Module5"
 Option Explicit
 
 '====================================================================
@@ -565,6 +564,13 @@ Private Sub GenerateNormalVGMJExcel( _
 
     Dim shortName As String
     Dim invoiceDate As Date
+    Dim isTheme As Boolean
+    Dim tradeIDs As Object
+    Dim englishSheetName As String
+    Dim createdFile As Boolean
+    Dim savedFile As Boolean
+    Dim errorNumber As Long
+    Dim errorText As String
 
     On Error GoTo ErrorHandler
 
@@ -597,6 +603,18 @@ Private Sub GenerateNormalVGMJExcel( _
             clientName, _
             wsData, _
             startRow)
+
+    ' Select the special invoice layout only for THEME.
+    isTheme = (StrComp(Trim(shortName), "Theme", vbTextCompare) = 0) Or _
+              (StrComp(Trim(clientName), _
+               "Theme International VCC-Theme International Trading", _
+               vbTextCompare) = 0)
+
+    If isTheme Then
+        englishSheetName = "English THEME"
+    Else
+        englishSheetName = "English"
+    End If
 
     '====================================================
     ' GET NORMAL TEMPLATE
@@ -666,9 +684,15 @@ Private Sub GenerateNormalVGMJExcel( _
     ' COPY TEMPLATE
     '====================================================
 
+    If isTheme Then
+        Set tradeIDs = GetThemeTradeIDs(wsData, startRow, endRow)
+    End If
+
     FileCopy _
         templatePath, _
         newFile
+
+    createdFile = True
 
     If Dir(newFile) = "" Then
 
@@ -694,7 +718,7 @@ Private Sub GenerateNormalVGMJExcel( _
     On Error Resume Next
 
     Set wsEnglish = _
-        exportWB.Worksheets("English")
+        exportWB.Worksheets(englishSheetName)
 
     On Error GoTo ErrorHandler
 
@@ -702,7 +726,7 @@ Private Sub GenerateNormalVGMJExcel( _
 
         Err.Raise _
             vbObjectError + 3004, , _
-            "Cannot find sheet 'English' in:" & _
+            "Cannot find sheet '" & englishSheetName & "' in:" & _
             vbCrLf & _
             newFile
 
@@ -735,13 +759,13 @@ Private Sub GenerateNormalVGMJExcel( _
     ' POPULATE ENGLISH
     '====================================================
 
-    PopulateVGMJSheet _
-        wsEnglish, _
-        clientName, _
-        invoiceDate, _
-        wsData, _
-        startRow, _
-        endRow
+    If isTheme Then
+        PopulateThemeVGMJSheet wsEnglish, clientName, invoiceDate, _
+                               wsData, startRow, endRow, tradeIDs
+    Else
+        PopulateVGMJSheet wsEnglish, clientName, invoiceDate, _
+                          wsData, startRow, endRow
+    End If
 
     '====================================================
     ' POPULATE JAPANESE
@@ -759,7 +783,13 @@ Private Sub GenerateNormalVGMJExcel( _
     ' SAVE
     '====================================================
 
+    ' Only the selected English layout and Japanese are sent to clients.
+    If isTheme Or VGMJSheetPresent(exportWB, "English THEME") Then
+        KeepVGMJInvoiceSheets exportWB, wsEnglish, wsJapanese
+    End If
+
     exportWB.Save
+    savedFile = True
 
     exportWB.Close _
         SaveChanges:=False
@@ -770,6 +800,8 @@ Private Sub GenerateNormalVGMJExcel( _
 
 ErrorHandler:
 
+    errorNumber = Err.Number
+    errorText = Err.Description
     On Error Resume Next
 
     If Not exportWB Is Nothing Then
@@ -781,6 +813,9 @@ ErrorHandler:
 
     End If
 
+    ' Do not leave an incomplete file that the next run would skip.
+    If createdFile And Not savedFile Then Kill newFile
+
     MsgBox _
         "Normal VGMJ Excel generation failed." & _
         vbCrLf & vbCrLf & _
@@ -788,9 +823,9 @@ ErrorHandler:
         vbCrLf & _
         "Invoice: " & invoiceRef & _
         vbCrLf & vbCrLf & _
-        "Error " & Err.Number & _
+        "Error " & errorNumber & _
         vbCrLf & _
-        Err.Description, _
+        errorText, _
         vbCritical
 
 End Sub
@@ -2497,3 +2532,208 @@ Private Function ConvertVGMJProduct( _
 
 End Function
 
+
+
+
+
+
+
+
+
+'====================================================================
+' THEME: LOOK UP TRADE ID FROM THE DEALS TAB IN THE INVOICE DATA FILE
+'====================================================================
+Private Function GetThemeTradeIDs( _
+    ByVal wsData As Worksheet, ByVal startRow As Long, _
+    ByVal endRow As Long) As Object
+
+    Dim wsDeals As Worksheet
+    Dim wanted As Object, ids As Object
+    Dim records As Variant, k As Variant
+    Dim r As Long, lastRow As Long
+    Dim ref As String, tradeID As String
+
+    On Error Resume Next
+    Set wsDeals = wsData.Parent.Worksheets("Deals")
+    On Error GoTo 0
+    If wsDeals Is Nothing Then
+        Err.Raise vbObjectError + 4100, , _
+            "Cannot find Deals in " & wsData.Parent.Name
+    End If
+
+    If StrComp(Trim(CStr(wsDeals.Range("A1").Value2)), _
+               "file_ref", vbTextCompare) <> 0 Or _
+       StrComp(Trim(CStr(wsDeals.Range("E1").Value2)), _
+               "trade_id", vbTextCompare) <> 0 Then
+        Err.Raise vbObjectError + 4101, , _
+            "Deals must have file_ref in A1 and trade_id in E1."
+    End If
+
+    Set wanted = CreateObject("Scripting.Dictionary")
+    Set ids = CreateObject("Scripting.Dictionary")
+    wanted.CompareMode = vbTextCompare
+    ids.CompareMode = vbTextCompare
+
+    For r = startRow To endRow
+        ref = Trim(CStr(wsData.Cells(r, "A").Value2))
+        If Len(ref) = 0 Then
+            Err.Raise vbObjectError + 4102, , _
+                "Missing File Ref in VGMJ row " & r
+        End If
+        wanted(ref) = True
+    Next r
+
+    lastRow = wsDeals.Cells(wsDeals.Rows.Count, "A").End(xlUp).Row
+    If lastRow >= 2 Then
+        records = wsDeals.Range("A2:E" & lastRow).Value2
+        For r = 1 To UBound(records, 1)
+            ref = Trim(CStr(records(r, 1)))
+            If wanted.Exists(ref) Then
+                tradeID = Trim(CStr(records(r, 5)))
+                If Len(tradeID) > 0 Then
+                    If ids.Exists(ref) Then
+                        If StrComp(CStr(ids(ref)), tradeID, vbBinaryCompare) <> 0 Then
+                            Err.Raise vbObjectError + 4103, , _
+                                "Conflicting Trade IDs for File Ref " & ref
+                        End If
+                    Else
+                        ids.Add ref, tradeID
+                    End If
+                End If
+            End If
+        Next r
+    End If
+
+    For Each k In wanted.Keys
+        If Not ids.Exists(k) Then
+            Err.Raise vbObjectError + 4104, , _
+                "No Trade ID found for File Ref " & k & _
+                ". Check the Deals query month and refresh the data."
+        End If
+    Next k
+
+    Set GetThemeTradeIDs = ids
+End Function
+
+'====================================================================
+' THEME: POPULATE THE ENGLISH LAYOUT WITH EXCHANGE ID IN COLUMN B
+'====================================================================
+Private Sub PopulateThemeVGMJSheet( _
+    ByVal ws As Worksheet, ByVal clientName As String, _
+    ByVal invoiceDate As Date, ByVal wsData As Worksheet, _
+    ByVal startRow As Long, ByVal endRow As Long, ByVal tradeIDs As Object)
+
+    Dim headerCell As Range, subtotalCell As Range
+    Dim firstDataRow As Long, subtotalRow As Long
+    Dim tradeCount As Long, lastDataRow As Long
+    Dim r As Long, destRow As Long, ref As String
+
+    ws.Range("C2").Value = clientName
+    ws.Range("L8").Value = "Invoice Number:VGMJ " & _
+                          Format(invoiceDate, "yyyymm") & "001"
+    ws.Range("L9").Value = "Invoice Date:" & Format(invoiceDate, "dd-mmm-yy")
+    ws.Range("D16").Value = DateSerial(Year(invoiceDate), Month(invoiceDate) + 1, 0)
+    ws.Range("D16").NumberFormat = "dd-mmm-yy"
+    UpdateInvoiceNarrative ws, invoiceDate, False
+
+    Set headerCell = ws.Columns("A").Find(What:="File Ref", _
+        LookIn:=xlValues, LookAt:=xlWhole, SearchOrder:=xlByRows, _
+        SearchDirection:=xlNext, MatchCase:=False, SearchFormat:=False)
+    Set subtotalCell = ws.Columns("I").Find(What:="Subtotal (Excluding Tax)", _
+        LookIn:=xlValues, LookAt:=xlWhole, SearchOrder:=xlByRows, _
+        SearchDirection:=xlNext, MatchCase:=False, SearchFormat:=False)
+
+    If headerCell Is Nothing Or subtotalCell Is Nothing Then
+        Err.Raise vbObjectError + 4105, , "Invalid English THEME template."
+    End If
+    If StrComp(Trim(CStr(ws.Cells(headerCell.Row, "B").Value2)), _
+               "Exchange ID", vbTextCompare) <> 0 Then
+        Err.Raise vbObjectError + 4106, , "Exchange ID header missing in column B."
+    End If
+
+    firstDataRow = headerCell.Row + 1
+    subtotalRow = subtotalCell.Row
+    tradeCount = endRow - startRow + 1
+    If subtotalRow <= firstDataRow Then
+        Err.Raise vbObjectError + 4107, , "No detail row in English THEME template."
+    End If
+
+    ' Keep one formatted detail row, then resize to the invoice's trade count.
+    If subtotalRow > firstDataRow + 1 Then
+        ws.Rows((firstDataRow + 1) & ":" & (subtotalRow - 1)).Delete
+    End If
+    If tradeCount > 1 Then
+        ws.Rows((firstDataRow + 1) & ":" & _
+                (firstDataRow + tradeCount - 1)).Insert _
+                Shift:=xlDown, CopyOrigin:=xlFormatFromLeftOrAbove
+    End If
+
+    lastDataRow = firstDataRow + tradeCount - 1
+    subtotalRow = lastDataRow + 1
+
+    For r = startRow To endRow
+        destRow = firstDataRow + r - startRow
+        ref = Trim(CStr(wsData.Cells(r, "A").Value2))
+        ws.Cells(destRow, "A").Value = wsData.Cells(r, "A").Value
+        ws.Cells(destRow, "B").NumberFormat = "@"
+        ws.Cells(destRow, "B").Value2 = CStr(tradeIDs(ref))
+        ws.Cells(destRow, "C").Value = wsData.Cells(r, "B").Value
+        ws.Cells(destRow, "C").NumberFormat = "dd-mmm-yy"
+        ws.Cells(destRow, "D").Value = ConvertVGMJProduct(CStr(wsData.Cells(r, "C").Value))
+        ws.Cells(destRow, "E").Value = wsData.Cells(r, "D").Value
+        ws.Cells(destRow, "F").Value = wsData.Cells(r, "E").Value
+        ws.Cells(destRow, "G").Value = wsData.Cells(r, "F").Value
+        ws.Cells(destRow, "H").Value = wsData.Cells(r, "G").Value
+        ws.Cells(destRow, "I").Value = "JPY/kWh"
+        ws.Cells(destRow, "J").Value = "JPY/kWh"
+        ws.Cells(destRow, "K").Value = 0
+        ws.Cells(destRow, "K").NumberFormat = "0%"
+        ws.Cells(destRow, "L").ClearContents
+        ws.Cells(destRow, "M").Value = wsData.Cells(r, "S").Value
+        ws.Cells(destRow, "N").Value = "JPY"
+    Next r
+
+    ' Rebuild totals using actual detail rows, not the original template range.
+    ws.Cells(subtotalRow, "M").Formula = "=SUM(M" & firstDataRow & ":M" & lastDataRow & ")"
+    ws.Cells(subtotalRow + 1, "M").Value = 0
+    ws.Cells(subtotalRow + 2, "M").Formula = "=M" & subtotalRow & "+M" & (subtotalRow + 1)
+    ws.Range("D14").Formula = "=CONCATENATE(""" & ChrW(&HA5) & _
+        """,TEXT(M" & (subtotalRow + 2) & ",""#,##0""),""-"")"
+    ws.Calculate
+End Sub
+
+'====================================================================
+' KEEP ONLY THE SELECTED ENGLISH AND JAPANESE SHEETS IN OUTPUT
+'====================================================================
+Private Sub KeepVGMJInvoiceSheets(ByVal wb As Workbook, _
+    ByVal englishWS As Worksheet, ByVal japaneseWS As Worksheet)
+
+    Dim i As Long, oldAlerts As Boolean
+    Dim n As Long, description As String
+    oldAlerts = Application.DisplayAlerts
+    On Error GoTo Failed
+    Application.DisplayAlerts = False
+    For i = wb.Sheets.Count To 1 Step -1
+        If wb.Sheets(i).Name <> englishWS.Name And _
+           wb.Sheets(i).Name <> japaneseWS.Name Then
+            wb.Sheets(i).Delete
+        End If
+    Next i
+    If englishWS.Name <> "English" Then englishWS.Name = "English"
+    Application.DisplayAlerts = oldAlerts
+    Exit Sub
+Failed:
+    n = Err.Number
+    description = Err.Description
+    Application.DisplayAlerts = oldAlerts
+    Err.Raise n, , description
+End Sub
+
+Private Function VGMJSheetPresent(ByVal wb As Workbook, _
+    ByVal sheetName As String) As Boolean
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = wb.Worksheets(sheetName)
+    On Error GoTo 0
+    VGMJSheetPresent = Not ws Is Nothing
+End Function

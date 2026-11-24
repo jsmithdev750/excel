@@ -13,6 +13,8 @@ Option Explicit
 ' 2. ADDITIONAL TRADE EXCEL
 '    - ONLY created when Client Setting column B = TRUE
 '    - Template comes from Settings!A13
+'    - Client Setting column G = TRUE adds Exchange ID in B
+'    - Exchange ID is matched to Deals!A (file_ref), Deals!E (trade_id)
 '    - Filename ends with "_trade.xlsx"
 '    - Trade sheet renamed to "MMM YYYY"
 '
@@ -801,7 +803,7 @@ Private Sub GenerateNormalVGMJExcel( _
 ErrorHandler:
 
     errorNumber = Err.Number
-    errorText = Err.Description
+    errorText = Err.description
     On Error Resume Next
 
     If Not exportWB Is Nothing Then
@@ -854,6 +856,12 @@ Private Sub GenerateTradeExcelIfRequired( _
 
     Dim shortName As String
     Dim exportExcel As Boolean
+    Dim includeExchangeID As Boolean
+    Dim tradeIDs As Object
+    Dim createdFile As Boolean
+    Dim savedFile As Boolean
+    Dim errorNumber As Long
+    Dim errorText As String
 
     Dim invoiceDate As Date
     Dim tradeSheetName As String
@@ -899,7 +907,8 @@ Private Sub GenerateTradeExcelIfRequired( _
         wsData, _
         startRow, _
         exportExcel, _
-        shortName) Then
+        shortName, _
+        includeExchangeID) Then
 
         Exit Sub
 
@@ -971,9 +980,16 @@ Private Sub GenerateTradeExcelIfRequired( _
     ' COPY TRADE TEMPLATE
     '====================================================
 
+    ' Validate IDs before creating any output file.
+    If includeExchangeID Then
+        Set tradeIDs = GetThemeTradeIDs(wsData, startRow, endRow)
+    End If
+
     FileCopy _
         templatePath, _
         newFile
+
+    createdFile = True
 
     If Dir(newFile) = "" Then
 
@@ -999,9 +1015,12 @@ Private Sub GenerateTradeExcelIfRequired( _
         exportWS, _
         wsData, _
         startRow, _
-        endRow
+        endRow, _
+        includeExchangeID, _
+        tradeIDs
 
     exportWB.Save
+    savedFile = True
 
     exportWB.Close _
         SaveChanges:=False
@@ -1012,6 +1031,8 @@ Private Sub GenerateTradeExcelIfRequired( _
 
 ErrorHandler:
 
+    errorNumber = Err.Number
+    errorText = Err.description
     On Error Resume Next
 
     If Not exportWB Is Nothing Then
@@ -1022,6 +1043,9 @@ ErrorHandler:
         Set exportWB = Nothing
 
     End If
+
+    ' Remove incomplete output so a subsequent run can retry.
+    If createdFile And Not savedFile Then Kill newFile
 
     MsgBox _
         "Trade Excel generation failed." & _
@@ -1038,9 +1062,9 @@ ErrorHandler:
         vbCrLf & _
         newFile & _
         vbCrLf & vbCrLf & _
-        "Error " & Err.Number & _
+        "Error " & errorNumber & _
         vbCrLf & _
-        Err.Description, _
+        errorText, _
         vbCritical
 
 End Sub
@@ -1151,7 +1175,8 @@ Private Function GetTradeClientSetting( _
     ByVal wsData As Worksheet, _
     ByVal startRow As Long, _
     ByRef exportExcel As Boolean, _
-    ByRef shortName As String) As Boolean
+    ByRef shortName As String, _
+    ByRef includeExchangeID As Boolean) As Boolean
 
     Dim r As Long
     Dim lastRow As Long
@@ -1160,6 +1185,7 @@ Private Function GetTradeClientSetting( _
     Dim settingSplitType As String
 
     exportExcel = False
+    includeExchangeID = False
     shortName = ""
 
     GetTradeClientSetting = False
@@ -1203,6 +1229,9 @@ Private Function GetTradeClientSetting( _
                     Trim(CStr( _
                         ws.Cells(r, "C").Value))
 
+                includeExchangeID = _
+                    IsSettingTrue(ws.Cells(r, "G").Value)
+
                 GetTradeClientSetting = True
 
                 Exit Function
@@ -1239,6 +1268,9 @@ Private Function GetTradeClientSetting( _
                     Trim(CStr( _
                         ws.Cells(r, "C").Value))
 
+                includeExchangeID = _
+                    IsSettingTrue(ws.Cells(r, "G").Value)
+
                 GetTradeClientSetting = True
 
                 Exit Function
@@ -1260,9 +1292,14 @@ Private Sub PopulateTradeSheet( _
     ByVal ws As Worksheet, _
     ByVal wsData As Worksheet, _
     ByVal startRow As Long, _
-    ByVal endRow As Long)
+    ByVal endRow As Long, _
+    ByVal includeExchangeID As Boolean, _
+    ByVal tradeIDs As Object)
 
     Dim rowCount As Long
+    Dim r As Long
+    Dim ref As String
+    Dim exchangeValues() As Variant
 
     rowCount = _
         endRow - startRow + 1
@@ -1279,6 +1316,42 @@ Private Sub PopulateTradeSheet( _
             wsData.Range( _
                 "A" & startRow & _
                 ":S" & endRow).Value
+
+    ' Standard clients retain the original A:S layout.
+    If Not includeExchangeID Then Exit Sub
+
+    If tradeIDs Is Nothing Then
+        Err.Raise vbObjectError + 4110, , "Exchange ID lookup is unavailable."
+    End If
+
+    If StrComp(Trim(CStr(ws.Range("A1").Value2)), "File Ref", vbTextCompare) <> 0 Or _
+       StrComp(Trim(CStr(ws.Range("B1").Value2)), "Contract Date", vbTextCompare) <> 0 Then
+        Err.Raise vbObjectError + 4111, , _
+            "Trade template must have File Ref in A1 and Contract Date in B1."
+    End If
+
+    ' Prepare all IDs in memory; preserve the ID as text.
+    ReDim exchangeValues(1 To rowCount, 1 To 1)
+    For r = startRow To endRow
+        ref = Trim(CStr(wsData.Cells(r, "A").Value2))
+        exchangeValues(r - startRow + 1, 1) = CStr(tradeIDs(ref))
+    Next r
+
+    ' Insert the extra column only in the generated copy of the template.
+    ws.Columns("B:B").Insert Shift:=xlToRight, CopyOrigin:=xlFormatFromLeftOrAbove
+    ws.Range("B1").Value = "Exchange ID"
+    With ws.Range("B2:B" & (rowCount + 1))
+        .NumberFormat = "@"
+        .Value2 = exchangeValues
+    End With
+    ws.Columns("B:B").AutoFit
+    If ws.Columns("B:B").ColumnWidth < 14 Then ws.Columns("B:B").ColumnWidth = 14
+
+    ' Extend the existing template filter to include all 20 columns and data rows.
+    If ws.AutoFilterMode Then
+        ws.AutoFilterMode = False
+        ws.Range("A1:T" & (rowCount + 1)).AutoFilter
+    End If
 
 End Sub
 
@@ -2724,7 +2797,7 @@ Private Sub KeepVGMJInvoiceSheets(ByVal wb As Workbook, _
     Exit Sub
 Failed:
     n = Err.Number
-    description = Err.Description
+    description = Err.description
     Application.DisplayAlerts = oldAlerts
     Err.Raise n, , description
 End Sub
@@ -2737,3 +2810,4 @@ Private Function VGMJSheetPresent(ByVal wb As Workbook, _
     On Error GoTo 0
     VGMJSheetPresent = Not ws Is Nothing
 End Function
+
